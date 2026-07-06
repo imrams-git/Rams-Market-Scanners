@@ -9,7 +9,7 @@ st.title("🎛️ Algorithmic Trading Command Center")
 st.sidebar.header("Select Strategy")
 selected_script = st.sidebar.selectbox(
     "Choose an analysis tool:",
-    ["US Volume Matching", "M stock Analyser", "India Volume Matching"]
+    ["US Volume Matching", "M stock Analyser", "India Volume Matching", "India SMA200"]
 )
 
 # Shared Universal Symbol List
@@ -235,5 +235,26 @@ elif selected_script == "India Volume Matching":
                 st.dataframe(result_df[result_df["Imb"] == "ImbHigh"], hide_index=True, use_container_width=True)
                 st.subheader("🔴 BEARISH: TARGETING SUPPORT")
                 st.dataframe(result_df[result_df["Imb"] == "ImbLow"], hide_index=True, use_container_width=True)
+            else:
+                st.warning("No levels matched current parameters.")
+
+# --- SCRIPT 3: INDIA VOLUME MATCHING ---
+elif selected_script == "India SMA200":
+    st.subheader("📈 India Stocks bouncing from SMA200 Scanner")
+    st.markdown("Scans for stocks reversing after touhing 200 SMA levels on the daily timeframes.")
+    
+    # Custom parameter inputs just for this script
+    n_bars = st.slider("Lookback Bars", min_value=20, max_value=200, value=100)
+    
+    if st.button("Execute SMA 200", type="primary"):
+        with st.spinner("Processing SMA 200 scan..."):
+            # Dynamically import and run your existing module
+            india_sma200 = importlib.import_module("Sl_India_SMA200")
+            #checker = india_sma200.scan_stocks()            
+            result_df = india_sma200.scan_stocks()
+            
+            if result_df is not None and not result_df.empty:
+                st.success("Scan Complete!")
+                #st.dataframe(result_df[result_df["Imb"] == "ImbLow"], hide_index=True, use_container_width=True)
             else:
                 st.warning("No levels matched current parameters.")
