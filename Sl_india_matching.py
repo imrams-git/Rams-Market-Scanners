@@ -6,6 +6,7 @@ import requests
 import warnings
 import os
 import time
+import pytz
 from datetime import datetime
 
 warnings.filterwarnings("ignore")
@@ -27,17 +28,50 @@ class VolumeAlertChecker:
         trend_lookback: int = 5,
         rsi_period: int = 14,
         atr_period: int = 14,
-        atr_multiplier: float = 5.0
+        atr_multiplier: float = 5.0,
+        squeeze_length: int = 20,
+        squeeze_multiplier: float = 1.5
+
     ):
         self.length = length
         self.high_volume_threshold = high_volume_threshold
         self.imbalance_threshold = imbalance_threshold
+        self.min_body_ratio = min_body_ratio
         self.min_distance_pct = min_distance_pct
         self.trend_lookback = trend_lookback
         self.rsi_period = rsi_period
         self.atr_period = atr_period
         self.atr_multiplier = atr_multiplier
         self.timeframes = {"30m": "30m", "1Hr": "1h"}
+        self.squeeze_length = squeeze_length
+        self.squeeze_multiplier = squeeze_multiplier
+
+    def get_time_adjusted_rvol(self, current_vol, avg_vol):
+        # Force local time to calculate elapsed time accurately
+        # Since the user runs this on NSE (Indian market), we need IST timezone and hours
+        local_tz = pytz.timezone('Asia/Kolkata')
+        now_local = datetime.now(local_tz)
+        
+        market_open = now_local.replace(hour=9, minute=15, second=0, microsecond=0)
+        market_close = now_local.replace(hour=15, minute=30, second=0, microsecond=0)
+        
+        # Pre-market: Volume is negligible, return 0 or unadjusted
+        if now_local < market_open: 
+            return 0
+            
+        # After-hours: Use the full daily average
+        if now_local >= market_close: 
+            return current_vol / avg_vol if avg_vol > 0 else 0
+        
+        # Intraday: Calculate elapsed minutes
+        elapsed_minutes = (now_local - market_open).total_seconds() / 60.0
+        fraction_of_day = elapsed_minutes / 375.0 # 375 minutes in a standard NSE trading day
+        
+        # Pro-rate the baseline average volume
+        pro_rated_avg_vol = avg_vol * fraction_of_day
+        
+        return current_vol / pro_rated_avg_vol if pro_rated_avg_vol > 0 else 0
+
 
     def calculate_rsi(self, series, period=14):
         delta = series.diff()
@@ -61,6 +95,42 @@ class VolumeAlertChecker:
             return yf.download(tickers=symbols, period=period, interval=timeframe, group_by="ticker", threads=True, progress=False)
         except: return pd.DataFrame()
 
+
+    def is_coiled_squeeze(self, df_d: pd.DataFrame) -> bool:
+        """
+        Determines if a stock is in a quiet, coiled squeeze on the Daily chart.
+        Returns True if Bollinger Bands contract inside the Keltner Channels.
+        """
+        if len(df_d) < self.squeeze_length:
+            return False
+            
+        close = df_d['Close']
+        
+        # 1. Calculate Standard Bollinger Bands (20 period, 2 StdDev)
+        ma = close.rolling(window=self.squeeze_length).mean()
+        std = close.rolling(window=self.squeeze_length).std()
+        bb_upper = ma + (2 * std)
+        bb_lower = ma - (2 * std)
+        
+        # 2. Calculate Keltner Channels (20 period MA + 1.5 * ATR)
+        # Using simple range as a proxy for True Range to keep it lightweight
+        high_low = df_d['High'] - df_d['Low']
+        high_cp = abs(df_d['High'] - close.shift())
+        low_cp = abs(df_d['Low'] - close.shift())
+        tr = pd.concat([high_low, high_cp, low_cp], axis=1).max(axis=1)
+        atr = tr.rolling(window=self.squeeze_length).mean()
+        
+        kc_upper = ma + (self.squeeze_multiplier * atr)
+        kc_lower = ma - (self.squeeze_multiplier * atr)
+        
+        # 3. The Squeeze Condition
+        # True if both the upper and lower BBs are completely inside the KC bounds
+        current_squeeze = (bb_upper.iloc[-1] < kc_upper.iloc[-1]) and (bb_lower.iloc[-1] > kc_lower.iloc[-1])
+        
+        return bool(current_squeeze)
+
+
+
     def analyze_symbol(self, intraday_data: pd.DataFrame, daily_data: pd.DataFrame, symbol: str, n_bars: int):
         if symbol not in intraday_data.columns.levels[0] or symbol not in daily_data.columns.levels[0]: return []
         
@@ -69,11 +139,14 @@ class VolumeAlertChecker:
         
         if len(df) < 20 or len(df_d) < 11: return []
 
-        # RVOL (D) Calculation - Today vs 10-day Avg
+        # RVOL (D) Calculation - Time-Adjusted
         avg_vol_d = df_d['Volume'].iloc[-11:-1].mean()
         current_vol_d = df_d['Volume'].iloc[-1]
-        rvol_d = current_vol_d / avg_vol_d if avg_vol_d > 0 else 0
+        rvol_d = self.get_time_adjusted_rvol(current_vol_d, avg_vol_d)
 
+        # Check if the daily chart is actively coiling in a squeeze
+        is_coiled = self.is_coiled_squeeze(df_d)
+        
         # Technicals
         df['RSI'] = self.calculate_rsi(df['Close'], self.rsi_period)
         df['ATR'] = self.calculate_atr(df, self.atr_period)
@@ -120,7 +193,7 @@ class VolumeAlertChecker:
             bars_ago = len(df) - df.index.get_loc(i) - 1
             valid_levels.append([symbol, color, round(cmp_price, 2), round(level, 2), 
                                  round(pct_diff, 2), bars_ago, round(current_rsi, 2), 
-                                 round(current_rvol_h, 2), round(rvol_d, 2)])
+                                 round(current_rvol_h, 2), round(rvol_d, 2), is_coiled])
         return valid_levels
 
     def add_fundamentals(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -177,6 +250,7 @@ class VolumeAlertChecker:
         df['Days2Earn'] = df['Symbol'].map(lambda x: fund_data.get(x, {}).get('Days2Earn', 'N/A'))
         return df
 
+
     def run(self, symbols: List[str], n_bars: int = 100):
         rows = []
         batch_size = 40
@@ -197,11 +271,11 @@ class VolumeAlertChecker:
 
         if not rows: return print("No stocks matched.")
 
-        df = pd.DataFrame(rows, columns=["Symbol", "TF", "Imb", "CMP", "Unbrk", "%Diff", "Ago", "RSI", "RVOL_H", "RVOL_D"])
+        df = pd.DataFrame(rows, columns=["Symbol", "TF", "Imb", "CMP", "Unbrk", "%Diff", "Ago", "RSI", "RVOL_H", "RVOL_D", "Is_Coiled"])
         df = df.drop_duplicates()
         
         # Apply Technical Criteria to flag top picks
-        top_criteria = (df['RSI'] >= 60) & (df['RSI'] <= 70) & (df['Ago'] >= 30)
+        top_criteria = (df['RVOL_D'] >= 1.0) & (df['RSI'] >= 60) & (df['RSI'] <= 70) & (df['Ago'] >= 30)
         df['TopPick'] = top_criteria
         
         df = self.add_fundamentals(df)
@@ -218,13 +292,12 @@ class VolumeAlertChecker:
         self.print_section(df, "ImbLow", RED, "🔴 BEARISH: TARGETING SUPPORT")
         self.print_section(df, "ImbHigh", GREEN, "🟢 BULLISH: TARGETING RESISTANCE")
         print(f"\n✅ Results saved to {filepath}")
-        return df
 
     def print_section(self, df, imb_type, color, title):
         sub = df[df["Imb"] == imb_type]
         if sub.empty: return
         print(f"\n{title}")
-        header = f"{'Symbol':<14} {'TF':<4} {'CMP':>8} {'Unbrk':>8} {'%Diff':>7} {'Ago':>4} {'RSI':>5} {'RV(H)':>5} {'RV(D)':>5} {'EPS':>7} {'D2Earn':>6}"
+        header = f"{'Symbol':<14} {'TF':<4} {'CMP':>8} {'Unbrk':>8} {'%Diff':>7} {'Ago':>4} {'RSI':>5} {'RV(H)':>5} {'RV(D)':>5} {'EPS':>7} {'D2Earn':>6} {'IsCoiled':>5}"
         print(header)
         print("-" * len(header))
         for _, r in sub.iterrows():
@@ -237,7 +310,7 @@ class VolumeAlertChecker:
                     row_color = RED 
             except: pass
 
-            print(row_color + f"{r['Symbol']:<14} {r['TF']:<4} {r['CMP']:>8.2f} {r['Unbrk']:>8.2f} {r['%Diff']:>7.2f} {int(r['Ago']):>4} {r['RSI']:>5.1f} {r['RVOL_H']:>5.1f} {r['RVOL_D']:>5.1f} {str(r['EPS']):>7} {str(r['Days2Earn']):>6}" + RESET)
+            print(row_color + f"{r['Symbol']:<14} {r['TF']:<4} {r['CMP']:>8.2f} {r['Unbrk']:>8.2f} {r['%Diff']:>7.2f} {int(r['Ago']):>4} {r['RSI']:>5.1f} {r['RVOL_H']:>5.1f} {r['RVOL_D']:>5.1f} {str(r['EPS']):>7} {str(r['Days2Earn']):>6} {str(r['Is_Coiled']):>5}" + RESET)
 
 
 # ==================================================
@@ -345,6 +418,7 @@ def main():
     'PHOENIXLTD.NS', 'AUROPHARMA.NS', 'HAVELLS.NS', 'BASF.NS', 'JMFINANCIL.NS',
     'BAJAJHLDNG.NS'
 ]
+
     checker = VolumeAlertChecker()
     checker.run(symbols, n_bars=100)
 
