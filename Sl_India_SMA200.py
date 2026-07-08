@@ -61,26 +61,22 @@ def scan_stocks():
                 continue
 
             # --- STAGE 2: Volume & Liquidity ---
+            # Calculate the 20-day moving average of volume
             df_daily['Vol_Avg'] = df_daily['Volume'].rolling(window=20).mean()
-            current_vol = float(df_daily['Volume'].iloc[-1])
             avg_vol = float(df_daily['Vol_Avg'].iloc[-1])
             
-            if (avg_vol * current_price) < 250000000: # Rs 25Cr minimum turnover
+            # Base liquidity filter: Requires Rs 25Cr minimum average daily turnover
+            if (avg_vol * current_price) < 250000000: 
                 continue
 
-            now = datetime.now()
-            market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
-            market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
-            
-            if market_open < now < market_close:
-                elapsed = (now - market_open).total_seconds() / 60
-                expected_vol = avg_vol * (elapsed / 375)
-            else:
-                expected_vol = avg_vol
+            # NEW LOGIC: Calculate average volume of the previous 3 completed days
+            # iloc[-4:-1] slices the dataframe to get the 3 days prior to today
+            recent_3_day_vol = float(df_daily['Volume'].iloc[-4:-1].mean())
 
-            if current_vol <= expected_vol:
+            # Momentum filter: Only pass if the recent 3-day volume is greater than the 20-day average
+            if recent_3_day_vol <= avg_vol:
                 continue
-
+                
             # --- STAGE 3: 200 SMA ---
             df_daily['SMA_200'] = df_daily['Close'].rolling(window=200).mean()
             current_sma200 = float(df_daily['SMA_200'].iloc[-1])
