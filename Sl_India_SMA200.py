@@ -153,6 +153,7 @@ def scan_stocks():
     if successful_matches:
         results_df = pd.DataFrame(successful_matches)
         print(results_df.to_string(index=False))
+        return results_df
     else:
         print("0 results. (The code is functioning perfectly, but no stocks meet all technical criteria today).")
 
