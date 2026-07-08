@@ -238,7 +238,7 @@ elif selected_script == "India Volume Matching":
             else:
                 st.warning("No levels matched current parameters.")
 
-# --- SCRIPT 3: INDIA VOLUME MATCHING ---
+# --- SCRIPT 4: INDIA SMA 200 ---
 elif selected_script == "India SMA200":
     st.subheader("📈 India Stocks bouncing from SMA200 Scanner")
     st.markdown("Scans for stocks reversing after touhing 200 SMA levels on the daily timeframes.")
@@ -255,6 +255,6 @@ elif selected_script == "India SMA200":
             
             if result_df is not None and not result_df.empty:
                 st.success("Scan Complete!")
-                #st.dataframe(result_df[result_df["Imb"] == "ImbLow"], hide_index=True, use_container_width=True)
+                st.dataframe(result_df, hide_index=True, use_container_width=True)
             else:
                 st.warning("No levels matched current parameters.")
