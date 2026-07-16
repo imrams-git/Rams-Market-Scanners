@@ -24,7 +24,7 @@ class VolumeAlertChecker:
         high_volume_threshold: float = 2.0,
         imbalance_threshold: float = 0.70,
         min_body_ratio: float = 0.60,
-        min_distance_pct: float = 0.5, 
+        min_distance_pct: float = 1.5, 
         trend_lookback: int = 5,
         rsi_period: int = 14,
         atr_period: int = 14,
@@ -137,7 +137,16 @@ class VolumeAlertChecker:
         df = intraday_data[symbol].copy().dropna()
         df_d = daily_data[symbol].copy().dropna()
         
-        if len(df) < 20 or len(df_d) < 11: return []
+        if len(df) < 20 or len(df_d) < 55: return []
+
+        # Calculate the Daily 50 Moving Average
+        df_d['50_DMA'] = df_d['Close'].rolling(window=50).mean()
+        current_50_dma = df_d['50_DMA'].iloc[-1]
+        cmp_price = df['Close'].iloc[-1]
+
+        # Macro Trend Filter: Immediately skip if the stock is trading under its daily 50 DMA
+        if cmp_price <= current_50_dma:
+           return []
 
         # RVOL (D) Calculation - Time-Adjusted
         avg_vol_d = df_d['Volume'].iloc[-11:-1].mean()
@@ -172,9 +181,11 @@ class VolumeAlertChecker:
             rng = row["High"] - row["Low"]
             if rng == 0: continue
 
+            if rvol_d < 0.8: continue
+
             color = "ImbLow" if row["Close"] >= row["Open"] else "ImbHigh"
-            if color == "ImbHigh" and (not is_bullish or not (50 <= current_rsi <= 75)): continue
-            if color == "ImbLow" and (not is_bearish or not (25 <= current_rsi <= 50)): continue
+            if color == "ImbHigh" and (not is_bullish or not (55 <= current_rsi <= 68)): continue
+            if color == "ImbLow" and (not is_bearish or not (25 <= current_rsi <= 45)): continue
 
             buy_p = (row["Close"] - row["Low"]) / rng
             if color == "ImbLow" and buy_p < self.imbalance_threshold: continue
@@ -255,7 +266,7 @@ class VolumeAlertChecker:
         rows = []
         batch_size = 40
         print(f"Fetching Daily Data for RVOL(D)...")
-        full_daily_data = self.get_batch_data(symbols, "1d", "30d")
+        full_daily_data = self.get_batch_data(symbols, "1d", "90d")
 
         for tf_name, tf_interval in self.timeframes.items():
             print(f"Scanning {tf_name}...")
@@ -275,13 +286,13 @@ class VolumeAlertChecker:
         df = df.drop_duplicates()
         
         # Apply Technical Criteria to flag top picks
-        top_criteria = (df['RVOL_D'] >= 1.0) & (df['RSI'] >= 60) & (df['RSI'] <= 70) & (df['Ago'] >= 30)
+        top_criteria = (df['RVOL_D'] >= 1.0) & (df['RSI'] >= 60) & (df['RSI'] <= 70) & (df['Ago'] >= 30 & (df['Is_Coiled']))
         df['TopPick'] = top_criteria
         
         df = self.add_fundamentals(df)
         
-        # Sort by Top Pick logic first, then by RVOL_D descending
-        df = df.sort_values(by=["TopPick", "RVOL_D"], ascending=[False, False])
+        # Sort by Top Pick logic first, then by Is_Coiled, RVOL_D descending
+        df = df.sort_values(by=["Is_Coiled", "TopPick", "RVOL_D"], ascending=False)
         df = df.drop(columns=["TopPick"])
 
         output_dir = 'output'
@@ -306,8 +317,8 @@ class VolumeAlertChecker:
             
             try:
                 days_to_earn = int(r['Days2Earn'])
-                if days_to_earn <= 5 and days_to_earn >= 0 and is_top_pick:
-                    row_color = RED 
+                if days_to_earn <= 7 and days_to_earn >= 0 and is_top_pick:
+                    continue 
             except: pass
 
             print(row_color + f"{r['Symbol']:<14} {r['TF']:<4} {r['CMP']:>8.2f} {r['Unbrk']:>8.2f} {r['%Diff']:>7.2f} {int(r['Ago']):>4} {r['RSI']:>5.1f} {r['RVOL_H']:>5.1f} {r['RVOL_D']:>5.1f} {str(r['EPS']):>7} {str(r['Days2Earn']):>6} {str(r['Is_Coiled']):>5}" + RESET)
