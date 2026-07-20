@@ -280,17 +280,33 @@ class VolumeAlertChecker:
                         rows.append([res[0], tf_name] + res[1:])
                 time.sleep(1)
 
-        if not rows: return print("No stocks matched.")
+        # Added explicit return for empty results to handle it properly in Streamlit
+        if not rows: 
+            print("No stocks matched.")
+            return pd.DataFrame() 
 
         df = pd.DataFrame(rows, columns=["Symbol", "TF", "Imb", "CMP", "Unbrk", "%Diff", "Ago", "RSI", "RVOL_H", "RVOL_D", "Is_Coiled"])
         df = df.drop_duplicates()
         
         # Apply Technical Criteria to flag top picks
-        top_criteria = (df['RVOL_D'] >= 1.0) & (df['RSI'] >= 60) & (df['RSI'] <= 70) & (df['Ago'] >= 30 & (df['Is_Coiled']))
+        top_criteria = (df['RVOL_D'] >= 1.0) & (df['RSI'] >= 60) & (df['RSI'] <= 70) & (df['Ago'] >= 30) & (df['Is_Coiled'])
         df['TopPick'] = top_criteria
         
         df = self.add_fundamentals(df)
         
+        # Apply final earnings proximity filter directly to the dataframe
+        def filter_earnings_risk(row):
+            try:
+                days_to_earn = int(row['Days2Earn'])
+                # If it's a top pick but has earnings in 0-7 days, it's too risky. Filter it out.
+                if 0 <= days_to_earn <= 7 and row['TopPick']:
+                    return False
+            except:
+                pass
+            return True
+            
+        df = df[df.apply(filter_earnings_risk, axis=1)]
+
         # Sort by Top Pick logic first, then by Is_Coiled, RVOL_D descending
         df = df.sort_values(by=["Is_Coiled", "TopPick", "RVOL_D"], ascending=False)
         df = df.drop(columns=["TopPick"])
@@ -303,6 +319,9 @@ class VolumeAlertChecker:
         self.print_section(df, "ImbLow", RED, "🔴 BEARISH: TARGETING SUPPORT")
         self.print_section(df, "ImbHigh", GREEN, "🟢 BULLISH: TARGETING RESISTANCE")
         print(f"\n✅ Results saved to {filepath}")
+        
+        # CRITICAL FIX: Return the fully processed DataFrame so Streamlit can render it
+        return df
 
     def print_section(self, df, imb_type, color, title):
         sub = df[df["Imb"] == imb_type]
@@ -314,12 +333,6 @@ class VolumeAlertChecker:
         for _, r in sub.iterrows():
             is_top_pick = 60 <= r['RSI'] <= 70 and r['Ago'] >= 30
             row_color = YELLOW if is_top_pick else color
-            
-            try:
-                days_to_earn = int(r['Days2Earn'])
-                if days_to_earn <= 7 and days_to_earn >= 0 and is_top_pick:
-                    continue 
-            except: pass
 
             print(row_color + f"{r['Symbol']:<14} {r['TF']:<4} {r['CMP']:>8.2f} {r['Unbrk']:>8.2f} {r['%Diff']:>7.2f} {int(r['Ago']):>4} {r['RSI']:>5.1f} {r['RVOL_H']:>5.1f} {r['RVOL_D']:>5.1f} {str(r['EPS']):>7} {str(r['Days2Earn']):>6} {str(r['Is_Coiled']):>5}" + RESET)
 
@@ -437,3 +450,4 @@ def main():
 # ==================================================
 if __name__ == "__main__":
     main()
+    
