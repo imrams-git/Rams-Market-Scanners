@@ -166,7 +166,7 @@ st.sidebar.info(f"Active Script Configuration: **{selected_script}**")
 # --- SCRIPT 1: US Volume Matching ---
 if selected_script == "US Volume Matching":
     st.subheader("📈 Institutional Volume Magnetism Scanner")
-    st.markdown("Scans for unmitigated high-volume levels on the 30m and 1Hr timeframes.")
+    st.markdown("Scans for unmitigated high-volume levels on the 30m, 1Hr, 4Hr, 1D timeframes.")
     
     # Custom parameter inputs just for this script
     n_bars = st.slider("Lookback Bars", min_value=20, max_value=200, value=100)
@@ -174,7 +174,7 @@ if selected_script == "US Volume Matching":
     if st.button("Execute Volume Scan", type="primary"):
         with st.spinner("Processing volume imbalances..."):
             # Dynamically import and run your existing module
-            us_matching = importlib.import_module("Sl_us_matching")
+            us_matching = importlib.reload("Sl_us_matching")
             checker = us_matching.VolumeAlertChecker()
             
             # Run and capture data
@@ -202,7 +202,7 @@ elif selected_script == "M stock Analyser":
         with st.spinner("Fetching option chains from Yahoo Finance..."):
             try:
                 # Dynamically import your second script (m_stock_analyzer.py)
-                opt_scan = importlib.import_module("options_scanner")
+                opt_scan = importlib.reload("options_scanner")
                 
                 # Assuming your other script has a function or class to call:
                 # result_df = opt_scan.run_options_analysis(US_SYMBOLS, target_delta, dte)
@@ -215,7 +215,7 @@ elif selected_script == "M stock Analyser":
 # --- SCRIPT 3: INDIA VOLUME MATCHING ---
 elif selected_script == "India Volume Matching":
     st.subheader("📈 Institutional Volume Magnetism Scanner")
-    st.markdown("Scans for unmitigated high-volume levels on the 30m and 1Hr timeframes.")
+    st.markdown("Scans for unmitigated high-volume levels on the 30m, 1Hr, 4Hr and 1D timeframes.")
     
     # Custom parameter inputs just for this script
     n_bars = st.slider("Lookback Bars", min_value=20, max_value=200, value=100)
@@ -223,8 +223,8 @@ elif selected_script == "India Volume Matching":
     if st.button("Execute Volume Scan", type="primary"):
         with st.spinner("Processing volume imbalances..."):
             # Dynamically import and run your existing module
-            us_matching = importlib.import_module("Sl_india_matching")
-            checker = us_matching.VolumeAlertChecker()
+            india_matching = importlib.reload("Sl_india_matching")
+            checker = india_matching.VolumeAlertChecker()
             
             # Run and capture data
             result_df = checker.run(INDIA_SYMBOLS, n_bars=n_bars)
@@ -249,7 +249,7 @@ elif selected_script == "India SMA200":
     if st.button("Execute SMA 200", type="primary"):
         with st.spinner("Processing SMA 200 scan..."):
             # Dynamically import and run your existing module
-            india_sma200 = importlib.import_module("Sl_India_SMA200")
+            india_sma200 = importlib.reload("Sl_India_SMA200")
             #checker = india_sma200.scan_stocks()            
             result_df = india_sma200.scan_stocks()
             
