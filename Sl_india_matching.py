@@ -42,7 +42,7 @@ class VolumeAlertChecker:
         self.rsi_period = rsi_period
         self.atr_period = atr_period
         self.atr_multiplier = atr_multiplier
-        self.timeframes = {"30m": "30m", "1Hr": "1h"}
+        self.timeframes = {"30m": "30m", "1Hr": "1h", "4Hr": "4h", "1d": "1d"}
         self.squeeze_length = squeeze_length
         self.squeeze_multiplier = squeeze_multiplier
 
@@ -137,41 +137,63 @@ class VolumeAlertChecker:
         df = intraday_data[symbol].copy().dropna()
         df_d = daily_data[symbol].copy().dropna()
         
+        # Ensure we have enough daily data for the 50 DMA and historical checks
         if len(df) < 20 or len(df_d) < 55: return []
 
-        # Calculate the Daily 50 Moving Average
+        # ---------------------------------------------------------
+        # NEW RULE 2 & 3: SUSTAINED DAILY TREND & VOLUME
+        # ---------------------------------------------------------
+        
+        # 1. Macro Trend Filter (50 DMA)
         df_d['50_DMA'] = df_d['Close'].rolling(window=50).mean()
         current_50_dma = df_d['50_DMA'].iloc[-1]
         cmp_price = df['Close'].iloc[-1]
 
-        # Macro Trend Filter: Immediately skip if the stock is trading under its daily 50 DMA
         if cmp_price <= current_50_dma:
            return []
 
-        # RVOL (D) Calculation - Time-Adjusted
-        avg_vol_d = df_d['Volume'].iloc[-11:-1].mean()
-        current_vol_d = df_d['Volume'].iloc[-1]
-        rvol_d = self.get_time_adjusted_rvol(current_vol_d, avg_vol_d)
+        # Calculate a 20-day baseline for Daily Volume to measure against
+        df_d['AvgVol_20'] = df_d['Volume'].rolling(window=20).mean()
+        
+        # Get the Daily Relative Volume for today, yesterday, and the day before
+        rvol_d_today = self.get_time_adjusted_rvol(df_d['Volume'].iloc[-1], df_d['AvgVol_20'].iloc[-1])
+        rvol_d_1_ago = df_d['Volume'].iloc[-2] / df_d['AvgVol_20'].iloc[-2]
+        rvol_d_2_ago = df_d['Volume'].iloc[-3] / df_d['AvgVol_20'].iloc[-3]
 
-        # Check if the daily chart is actively coiling in a squeeze
+        # RULE 2 & 3 CHECK: Bullish Steady Accumulation
+        # Price is rising day-by-day AND volume is >= 1.0 on the previous 2 days
+        is_steady_bull = (
+            (rvol_d_1_ago >= 1.0) and 
+            (rvol_d_2_ago >= 1.0)
+        )
+
+        # RULE 2 & 3 CHECK: Bearish Steady Distribution
+        # Price is falling day-by-day AND volume is >= 1.0 on the previous 2 days
+        is_steady_bear = (
+            (rvol_d_1_ago >= 1.0) and 
+            (rvol_d_2_ago >= 1.0)
+        )
+
+        # If it's not steadily accumulating or distributing, skip it entirely
+        if not is_steady_bull and not is_steady_bear:
+            return []
+
+        # ---------------------------------------------------------
+        # EXISTING LOGIC: Find the Unbroken Magnets (Rule 1)
+        # ---------------------------------------------------------
+        
         is_coiled = self.is_coiled_squeeze(df_d)
         
-        # Technicals
         df['RSI'] = self.calculate_rsi(df['Close'], self.rsi_period)
         df['ATR'] = self.calculate_atr(df, self.atr_period)
         df["AvgVol"] = df["Volume"].rolling(self.length).mean()
-        df["RVOL_H"] = df["Volume"] / df["AvgVol"] # Current bar vs Bar Avg
+        df["RVOL_H"] = df["Volume"] / df["AvgVol"] 
 
         current_rsi = df['RSI'].iloc[-1]
         current_atr = df['ATR'].iloc[-1]
         current_rvol_h = df['RVOL_H'].iloc[-1]
-        cmp_price = df['Close'].iloc[-1]
 
-        recent_move = cmp_price - df['Close'].iloc[-self.trend_lookback]
-        is_bullish = recent_move > 0
-        is_bearish = recent_move < 0
-
-        # Analyze historical high-vol bars
+        # Find historical high-vol bars to create the unmitigated levels
         recent_bars = df.iloc[-n_bars:]
         high_vol_indices = recent_bars[recent_bars["RVOL_H"] > self.high_volume_threshold].index
 
@@ -181,16 +203,21 @@ class VolumeAlertChecker:
             rng = row["High"] - row["Low"]
             if rng == 0: continue
 
-            if rvol_d < 0.8: continue
-
             color = "ImbLow" if row["Close"] >= row["Open"] else "ImbHigh"
-            if color == "ImbHigh" and (not is_bullish or not (55 <= current_rsi <= 68)): continue
-            if color == "ImbLow" and (not is_bearish or not (25 <= current_rsi <= 45)): continue
+            
+            # Align the historical magnet with our new daily trend direction
+            if color == "ImbHigh" and not is_steady_bull: continue
+            if color == "ImbLow" and not is_steady_bear: continue
+            
+            # Momentum safety check
+            if color == "ImbHigh" and not (55 <= current_rsi <= 68): continue
+            if color == "ImbLow" and not (25 <= current_rsi <= 45): continue
 
             buy_p = (row["Close"] - row["Low"]) / rng
             if color == "ImbLow" and buy_p < self.imbalance_threshold: continue
             if color == "ImbHigh" and (1 - buy_p) < self.imbalance_threshold: continue
 
+            # RULE 1: Unbroken Check
             future = df.loc[i:].iloc[1:]
             level = row["High"] if color == "ImbHigh" else row["Low"]
             if color == "ImbHigh" and (future["High"] > level).any(): continue
@@ -204,8 +231,9 @@ class VolumeAlertChecker:
             bars_ago = len(df) - df.index.get_loc(i) - 1
             valid_levels.append([symbol, color, round(cmp_price, 2), round(level, 2), 
                                  round(pct_diff, 2), bars_ago, round(current_rsi, 2), 
-                                 round(current_rvol_h, 2), round(rvol_d, 2), is_coiled])
+                                 round(current_rvol_h, 2), round(rvol_d_today, 2), is_coiled])
         return valid_levels
+
 
     def add_fundamentals(self, df: pd.DataFrame) -> pd.DataFrame:
         unique_symbols = df['Symbol'].unique()
@@ -215,21 +243,24 @@ class VolumeAlertChecker:
             print(f"\nFetching Fundamental Data for {len(unique_symbols)} matched symbols...")
             
         for sym in unique_symbols:
-            eps_str = "N/A"
+            pe_str = "N/A"
             days_to_earn = "N/A"
             
             try:
                 ticker = yf.Ticker(sym)
                 
-                # Independent Try-Catch for EPS
+                # Fetch P/E Ratio (trailingPE or forwardPE fallback)
                 try:
                     info = ticker.info
-                    eps = info.get('trailingEps', None)
-                    if eps is not None:
-                        eps_str = f"{eps:.2f}"
+                    pe = info.get('trailingPE', None)
+                    if pe is None:
+                        pe = info.get('forwardPE', None)
+                        
+                    if pe is not None and pe > 0:
+                        pe_str = f"{pe:.1f}"
                 except Exception:
-                    eps_str = "ERR"
-                
+                    pe_str = "ERR"
+                    
                 # Independent Try-Catch for Earnings Date
                 try:
                     # Method 1: Try using the nested calendar property
@@ -253,11 +284,11 @@ class VolumeAlertChecker:
             except Exception:
                 pass # Main ticker assignment failed
                 
-            fund_data[sym] = {"EPS": eps_str, "Days2Earn": days_to_earn}
+            fund_data[sym] = {"PE": pe_str, "Days2Earn": days_to_earn}
             # Increased sleep to prevent IP blocking from Yahoo Finance
             time.sleep(1) 
                 
-        df['EPS'] = df['Symbol'].map(lambda x: fund_data.get(x, {}).get('EPS', 'N/A'))
+        df['PE'] = df['Symbol'].map(lambda x: fund_data.get(x, {}).get('PE', 'N/A'))
         df['Days2Earn'] = df['Symbol'].map(lambda x: fund_data.get(x, {}).get('Days2Earn', 'N/A'))
         return df
 
@@ -327,14 +358,14 @@ class VolumeAlertChecker:
         sub = df[df["Imb"] == imb_type]
         if sub.empty: return
         print(f"\n{title}")
-        header = f"{'Symbol':<14} {'TF':<4} {'CMP':>8} {'Unbrk':>8} {'%Diff':>7} {'Ago':>4} {'RSI':>5} {'RV(H)':>5} {'RV(D)':>5} {'EPS':>7} {'D2Earn':>6} {'IsCoiled':>5}"
+        header = f"{'Symbol':<14} {'TF':<4} {'CMP':>8} {'Unbrk':>8} {'%Diff':>7} {'Ago':>4} {'RSI':>5} {'RV(H)':>5} {'RV(D)':>5} {'PE':>7} {'D2Earn':>6} {'IsCoiled':>5}"
         print(header)
         print("-" * len(header))
         for _, r in sub.iterrows():
             is_top_pick = 60 <= r['RSI'] <= 70 and r['Ago'] >= 30
             row_color = YELLOW if is_top_pick else color
 
-            print(row_color + f"{r['Symbol']:<14} {r['TF']:<4} {r['CMP']:>8.2f} {r['Unbrk']:>8.2f} {r['%Diff']:>7.2f} {int(r['Ago']):>4} {r['RSI']:>5.1f} {r['RVOL_H']:>5.1f} {r['RVOL_D']:>5.1f} {str(r['EPS']):>7} {str(r['Days2Earn']):>6} {str(r['Is_Coiled']):>5}" + RESET)
+            print(row_color + f"{r['Symbol']:<14} {r['TF']:<4} {r['CMP']:>8.2f} {r['Unbrk']:>8.2f} {r['%Diff']:>7.2f} {int(r['Ago']):>4} {r['RSI']:>5.1f} {r['RVOL_H']:>5.1f} {r['RVOL_D']:>5.1f} {str(r['PE']):>7} {str(r['Days2Earn']):>6} {str(r['Is_Coiled']):>5}" + RESET)
 
 
 # ==================================================
