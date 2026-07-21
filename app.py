@@ -174,6 +174,7 @@ if selected_script == "US Volume Matching":
     if st.button("Execute Volume Scan", type="primary"):
         with st.spinner("Processing volume imbalances..."):
             # Dynamically import and run your existing module
+            import Sl_us_matching
             us_matching = importlib.reload("Sl_us_matching")
             checker = us_matching.VolumeAlertChecker()
             
@@ -202,6 +203,7 @@ elif selected_script == "M stock Analyser":
         with st.spinner("Fetching option chains from Yahoo Finance..."):
             try:
                 # Dynamically import your second script (m_stock_analyzer.py)
+                import options_scanner
                 opt_scan = importlib.reload("options_scanner")
                 
                 # Assuming your other script has a function or class to call:
@@ -223,6 +225,7 @@ elif selected_script == "India Volume Matching":
     if st.button("Execute Volume Scan", type="primary"):
         with st.spinner("Processing volume imbalances..."):
             # Dynamically import and run your existing module
+            import Sl_india_matching
             india_matching = importlib.reload("Sl_india_matching")
             checker = india_matching.VolumeAlertChecker()
             
@@ -249,6 +252,7 @@ elif selected_script == "India SMA200":
     if st.button("Execute SMA 200", type="primary"):
         with st.spinner("Processing SMA 200 scan..."):
             # Dynamically import and run your existing module
+            import Sl_India_SMA200
             india_sma200 = importlib.reload("Sl_India_SMA200")
             #checker = india_sma200.scan_stocks()            
             result_df = india_sma200.scan_stocks()
