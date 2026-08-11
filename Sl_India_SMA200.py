@@ -4,9 +4,13 @@ import yfinance as yf
 import requests
 from datetime import datetime, timedelta
 import warnings
+import os
+import sys
 
 # Suppress warnings for clean console output
 warnings.simplefilter(action='ignore', category=FutureWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="yfinance")
+warnings.filterwarnings("ignore", message=".*Timestamp.utcnow is deprecated.*")
 
 def calculate_rsi(series, period=14):
     """Calculates Wilder's Relative Strength Index (RSI)."""
@@ -33,16 +37,24 @@ def fetch_nifty_500_tickers():
         print(f"Error fetching Nifty 500: {e}. Using fallback list.")
         return ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS"]
 
-def scan_stocks():
-    print("Fetching Nifty 500 stock list...")
+def scan_stocks(progress_callback=None):
+    if not progress_callback:
+        print("Fetching Nifty 500 stock list...")
+        
     tickers = fetch_nifty_500_tickers()
-    print(f"Successfully loaded {len(tickers)} symbols. Starting scan...\n")
+    total_tickers = len(tickers)
+    
+    if not progress_callback:
+        print(f"Successfully loaded {total_tickers} symbols. Starting scan...\n")
     
     successful_matches = []
     end_date = datetime.now()
     start_date = end_date - timedelta(days=3 * 365)
     
     for idx, ticker in enumerate(tickers):
+        if progress_callback:
+            progress_callback(idx + 1, total_tickers, ticker.replace(".NS", ""))
+            
         try:
             df_daily = yf.download(ticker, start=start_date, end=end_date, progress=False)
             
@@ -55,38 +67,43 @@ def scan_stocks():
 
             # --- STAGE 1: Price ---
             current_price = float(df_daily['Close'].iloc[-1])
-            open_price = float(df_daily['Open'].iloc[-1])
+            prev_price = float(df_daily['Close'].iloc[-2])
             
-            if current_price <= 100 or current_price <= open_price: 
+            if current_price <= 50 or current_price <= prev_price: 
                 continue
 
             # --- STAGE 2: Volume & Liquidity ---
-            # Calculate the 20-day moving average of volume
             df_daily['Vol_Avg'] = df_daily['Volume'].rolling(window=20).mean()
+            current_vol = float(df_daily['Volume'].iloc[-1])
             avg_vol = float(df_daily['Vol_Avg'].iloc[-1])
             
-            # Base liquidity filter: Requires Rs 25Cr minimum average daily turnover
-            if (avg_vol * current_price) < 250000000: 
+            if (avg_vol * current_price) < 250000000: # Rs 25Cr minimum turnover
                 continue
 
-            # NEW LOGIC: Calculate average volume of the previous 3 completed days
-            # iloc[-4:-1] slices the dataframe to get the 3 days prior to today
-            recent_3_day_vol = float(df_daily['Volume'].iloc[-4:-1].mean())
+            now = datetime.now()
+            market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
+            market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+            
+            if market_open < now < market_close:
+                elapsed = (now - market_open).total_seconds() / 60
+                expected_vol = avg_vol * (elapsed / 375)
+            else:
+                expected_vol = avg_vol
 
-            # Momentum filter: Only pass if the recent 3-day volume is greater than the 20-day average
-            if recent_3_day_vol <= avg_vol:
+            volume_threshold = expected_vol * 0.5
+            if current_vol <= volume_threshold:
                 continue
-                
+
             # --- STAGE 3: 200 SMA ---
             df_daily['SMA_200'] = df_daily['Close'].rolling(window=200).mean()
             current_sma200 = float(df_daily['SMA_200'].iloc[-1])
             
             lower_bound = current_sma200 * 1.0
-            upper_bound = current_sma200 * 1.05
+            upper_bound = current_sma200 * 1.1
             if not (lower_bound <= current_price <= upper_bound):
                 continue
 
-            # --- STAGE 4: RSI (Fixed for Pandas 3.0) ---
+            # --- STAGE 4: RSI ---
             df_daily['RSI'] = calculate_rsi(df_daily['Close'], period=14)
             daily_rsi = float(df_daily['RSI'].iloc[-1])
             if daily_rsi < 50:
@@ -127,31 +144,73 @@ def scan_stocks():
             if skip_earnings:
                 continue
 
+            # --- Calculate % Difference from SMA200 ---
+            pct_diff = ((current_price - current_sma200) / current_sma200) * 100
+
             # --- Success ---
+            clean_ticker = ticker.replace(".NS", "")
             successful_matches.append({
-                "Ticker": ticker.replace(".NS", ""),
+                "Ticker": clean_ticker,
                 "Price": round(current_price, 2),
                 "200 SMA": round(current_sma200, 2),
+                "%diff": round(pct_diff, 2),
                 "D-RSI": round(daily_rsi, 2),
                 "W-RSI": round(weekly_rsi, 2),
                 "M-RSI": round(monthly_rsi, 2)
             })
-            print(f" MATCH FOUND: {ticker.replace('.NS', '')}")
+            
+            if not progress_callback:
+                print(f" MATCH FOUND: {clean_ticker}")
 
         except Exception as e:
-            # THIS WILL NOW ALERT YOU IF CODE FAILS INSTEAD OF HIDING IT
-            print(f" [!] Crash on {ticker}: {type(e).__name__} - {e}")
+            if not progress_callback:
+                print(f" [!] Crash on {ticker}: {type(e).__name__} - {e}")
             continue
             
-    print("\n" + "="*60)
-    print("FINAL SCAN RESULTS")
-    print("="*60)
-    if successful_matches:
-        results_df = pd.DataFrame(successful_matches)
-        print(results_df.to_string(index=False))
-        return results_df
-    else:
-        print("0 results. (The code is functioning perfectly, but no stocks meet all technical criteria today).")
+    return successful_matches
 
+# ==========================================
+# EXECUTION CONTROLLER (Terminal vs Web UI)
+# ==========================================
 if __name__ == "__main__":
-    scan_stocks()
+    # Check if executed via Streamlit
+    if 'streamlit' in sys.modules or os.environ.get('STREAMLIT_RUN'):
+        import streamlit as st
+        
+        st.set_page_config(page_title="Nifty 500 SMA Scanner", layout="wide")
+        st.title("📈 Nifty 500 Trend & Support Scanner")
+        st.write("Scanning for stocks trading up to 10% above their 200 SMA with multi-timeframe RSI confirmation (>50).")
+        
+        if st.button("🚀 Run Scan Now", type="primary"):
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            def update_progress(current, total, ticker_name):
+                pct = current / total
+                progress_bar.progress(pct)
+                status_text.text(f"Scanning symbol {current}/{total}: {ticker_name}")
+                
+            matches = scan_stocks(progress_callback=update_progress)
+            
+            progress_bar.empty()
+            status_text.empty()
+            
+            if matches:
+                df_results = pd.DataFrame(matches)
+                df_results = df_results.sort_values(by="%diff", ascending=True)
+                st.success(f"Scan complete! Found {len(df_results)} matching stocks.")
+                st.dataframe(df_results, use_container_width=True)
+            else:
+                st.warning("0 results found matching current technical parameters.")
+    else:
+        # Standard Terminal Execution
+        matches = scan_stocks()
+        print("\n" + "="*60)
+        print("FINAL SCAN RESULTS")
+        print("="*60)
+        if matches:
+            results_df = pd.DataFrame(matches)
+            results_df = results_df.sort_values(by="%diff", ascending=True)
+            print(results_df.to_string(index=False))
+        else:
+            print("0 results. (The code is functioning perfectly, but no stocks meet all technical criteria today).")
