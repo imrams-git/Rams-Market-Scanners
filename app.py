@@ -2,9 +2,8 @@ import streamlit as st
 import importlib
 from m_stock_analyzer import run_analysis, SECTORS
 
-# 1. Page Configuration
+# 1. Page Configuration (Called ONCE at the absolute top)
 st.set_page_config(page_title="Trading Algorithm Dashboard", layout="wide")
-st.title("🎛️ Algorithmic Trading Command Center")
 
 # 2. Sidebar Navigation for selecting the script
 st.sidebar.header("Select Strategy")
@@ -16,9 +15,15 @@ selected_script = st.sidebar.selectbox(
      "US SMA200",
      "M stock Analyser"])
 
+st.sidebar.markdown("---")
+st.sidebar.info(f"Active Script Configuration: **{selected_script}**")
+
+# Main Title Area
+st.title("🎛️ Algorithmic Trading Command Center")
+
 # Shared Universal Symbol List
 US_SYMBOLS = [
-        "A", "AAL", "AAP", "AAPL", "ABBV", "ABNB", "ABT", "ACI", "ACN", "ADBE", "ADI", "ADM", "ADP", "ADSK", "AEE",
+    "A", "AAL", "AAP", "AAPL", "ABBV", "ABNB", "ABT", "ACI", "ACN", "ADBE", "ADI", "ADM", "ADP", "ADSK", "AEE",
     "AEP", "AFL", "AFRM", "AGIO", "AIG", "AIZ", "AJG", "AKAM", "ALAB", "ALB", "ALGN", "ALK", "ALL", "ALLE", "ALLY",
     "ALNY", "AMAT", "AMC", "AMD", "AME", "AMGN", "AMN", "AMP", "AMT", "AMZN", "ANET", "AON", "AOS", "APA", "APD",
     "APH", "APP", "APTV", "ARE", "ARM", "ARNA", "ASGN", "ASML", "ATO", "AVB", "AVGO", "AVY", "AWK", "AXP", "AZN",
@@ -129,41 +134,8 @@ INDIA_SYMBOLS = [
     'BLUEJET.NS', 'POLYCAB.NS', 'IIFL.NS', 'COLPAL.NS', 'REDINGTON.NS',
     'TATAPOWER.NS', 'BRIGADE.NS', 'CAPLIPOINT.NS', 'NAUKRI.NS', 'PFC.NS',
     'GMRAIRPORT.NS', 'CROMPTON.NS', 'COCHINSHIP.NS', 'PERSISTENT.NS',
-    'CENTRALBK.NS', 'BAJAJHFL.NS', 'TATATECH.NS', '3MINDIA.NS', 'GODREJIND.NS',
-    'SUNDRMFAST.NS', 'KPIL.NS', 'HSCL.NS', 'SKFINDIA.NS', 'TIMKEN.NS',
-    'MUTHOOTFIN.NS', 'CARBORUNIV.NS', 'ZENSARTECH.NS', 'SIEMENS.NS', 'SBFC.NS',
-    'BALRAMCHIN.NS', 'CGPOWER.NS', 'PPLPHARMA.NS', 'DOMS.NS', 'SAILIFE.NS',
-    'ARE&M.NS', 'AFCONS.NS', 'VTL.NS', 'CDSL.NS', 'KALYANKJIL.NS', 'CESC.NS',
-    'CEATLTD.NS', 'CHENNPETRO.NS', 'PNBHOUSING.NS', 'GSPL.NS', 'DEVYANI.NS',
-    'BATAINDIA.NS', 'TVSMOTOR.NS', 'TRIDENT.NS', 'KPITTECH.NS', 'TATAINVEST.NS',
-    'LEMONTREE.NS', 'AAVAS.NS', 'SOBHA.NS', 'JSWINFRA.NS', 'AFFLE.NS',
-    'ADANIENSOL.NS', 'COHANCE.NS', 'HEXT.NS', 'IREDA.NS', 'ADANIPOWER.NS',
-    'MRF.NS', 'UTIAMC.NS', 'INOXWIND.NS', 'NATCOPHARM.NS', 'OFSS.NS',
-    'CLEAN.NS', 'JSWENERGY.NS', 'MSUMI.NS', 'MEDANTA.NS', 'KAJARIACER.NS',
-    'IEX.NS', 'MPHASIS.NS', 'JSL.NS', 'ABREL.NS', 'SJVN.NS', 'SCHNEIDER.NS',
-    'JINDALSAW.NS', 'GODFRYPHLP.NS', 'METROPOLIS.NS', 'ENRIN.NS', 'ADANIGREEN.NS',
-    'TRENT.NS', 'JPPOWER.NS', 'ITCHOTELS.NS', 'IRB.NS', 'CGCL.NS', 'NUVAMA.NS',
-    'APLLTD.NS', 'SONACOMS.NS', 'RAILTEL.NS', 'TORNTPOWER.NS', 'ALOKINDS.NS',
-    'EIDPARRY.NS', 'NATIONALUM.NS', 'ABBOTINDIA.NS', 'RRKABEL.NS', 'KIMS.NS',
-    'SBICARD.NS', 'PETRONET.NS', 'NMDC.NS', 'FORTIS.NS', 'AMBER.NS',
-    'NUVOCO.NS', 'NHPC.NS', 'EMCURE.NS', 'FIVESTAR.NS', 'CAMPUS.NS',
-    'CASTROLIND.NS', 'KSB.NS', 'ONESOURCE.NS', 'ELGIEQUIP.NS', 'ENGINERSIN.NS',
-    'IPCALAB.NS', 'KIRLOSBROS.NS', 'PGEL.NS', 'NETWEB.NS', 'ITI.NS',
-    'JUBLPHARMA.NS', 'MAPMYINDIA.NS', 'PREMIERENE.NS', 'THELEELA.NS',
-    'RADICO.NS', 'AIAENG.NS', 'BSOFT.NS', 'SUNTV.NS', 'KARURVYSYA.NS',
-    'M&MFIN.NS', 'MINDACORP.NS', 'AEGISVOPAK.NS', 'HINDZINC.NS', 'JBMA.NS',
-    'GRANULES.NS', 'TRIVENI.NS', 'PRAJIND.NS', 'GRAVITA.NS', 'RITES.NS',
-    'DIXON.NS', 'FINCABLES.NS', 'SONATSOFTW.NS', 'APTUS.NS', 'IFCI.NS',
-    'ANANTRAJ.NS', 'OLAELEC.NS', 'IKS.NS', 'RPOWER.NS', 'CUMMINSIND.NS',
-    'LTFOODS.NS', 'IRCON.NS', 'OLECTRA.NS', 'KAYNES.NS', 'TTML.NS',
-    'SARDAEN.NS', 'ASTRAL.NS', 'DBREALTY.NS', 'WAAREEENER.NS', 'BLUESTARCO.NS',
-    'STARHEALTH.NS', 'APOLLOTYRE.NS', 'EMAMILTD.NS', 'UNITDSPR.NS',
-    'PHOENIXLTD.NS', 'AUROPHARMA.NS', 'HAVELLS.NS', 'BASF.NS', 'JMFINANCIL.NS',
-    'BAJAJHLDNG.NS'
+    'CENTRALBK.NS', 'BAJAJHLDNG.NS'
 ]
-
-st.sidebar.markdown("---")
-st.sidebar.info(f"Active Script Configuration: **{selected_script}**")
 
 # ==========================================
 # ROUTING LOGIC BASED ON USER SELECTION
@@ -171,24 +143,14 @@ st.sidebar.info(f"Active Script Configuration: **{selected_script}**")
 
 # --- SCRIPT 1: INDIA VOLUME MATCHING ---
 if selected_script == "India Volume Matching":
-    st.subheader("📈 Institutional Volume Magnetism Scanner")
-    st.markdown("This script scans for high-volume momentum candles and checking if their origins (support/resistance levels) remain unbroken by subsequent price action. These are the filters:")
-    st.markdown(" High Volume: Stock must have >1.0x the average volume")
-    st.markdown(" Imbalance: The Stock's close must show strong directional pressure (>70%)")
-    st.markdown(" Unbroken: The previous high/low price level of the stick must never have been touched since it formed")
-    st.markdown(" RSI (50-70): Current momentum is healthy but not exhausted")
-    st.markdown(" Trend: Price is currently moving toward the level")
-    
-    # Custom parameter inputs just for this script
+    st.subheader("📈 Institutional Volume Magnetism Scanner (India)")
+    st.markdown("Scans for high-volume momentum candles and checks if support/resistance levels remain unbroken.")
     n_bars = st.slider("Lookback Bars", min_value=20, max_value=200, value=100)
     
     if st.button("Execute Volume Scan", type="primary"):
         with st.spinner("Processing volume imbalances..."):
-            # Dynamically import and run your existing module
-            india_matching = importlib.reload("Sl_India_matching") 
+            india_matching = importlib.import_module("Sl_India_matching") 
             checker = india_matching.VolumeAlertChecker()
-            
-            # Run and capture data
             result_df = checker.run(INDIA_SYMBOLS, n_bars=n_bars)
             
             if result_df is not None and not result_df.empty:
@@ -200,27 +162,16 @@ if selected_script == "India Volume Matching":
             else:
                 st.warning("No levels matched current parameters.")
 
-
 # --- SCRIPT 2: US Volume Matching ---
 elif selected_script == "US Volume Matching":
-    st.subheader("📈 Institutional Volume Magnetism Scanner")
-    st.markdown("This script scans for high-volume momentum candles and checking if their origins (support/resistance levels) remain unbroken by subsequent price action. These are the filters:")
-    st.markdown(" High Volume: Stock must have >1.0x the average volume")
-    st.markdown(" Imbalance: The Stock's close must show strong directional pressure (>70%)")
-    st.markdown(" Unbroken: The previous high/low price level of the stick must never have been touched since it formed")
-    st.markdown(" RSI (50-70): Current momentum is healthy but not exhausted")
-    st.markdown(" Trend: Price is currently moving toward the level")
-    
-    # Custom parameter inputs just for this script
+    st.subheader("📈 Institutional Volume Magnetism Scanner (US)")
+    st.markdown("Scans for high-volume momentum candles and checks if support/resistance levels remain unbroken.")
     n_bars = st.slider("Lookback Bars", min_value=20, max_value=200, value=100)
     
     if st.button("Execute Volume Scan", type="primary"):
         with st.spinner("Processing volume imbalances..."):
-            # Dynamically import and run your existing module
             us_matching = importlib.import_module("Sl_US_matching")
             checker = us_matching.VolumeAlertChecker()
-            
-            # Run and capture data
             result_df = checker.run(US_SYMBOLS, n_bars=n_bars)
             
             if result_df is not None and not result_df.empty:
@@ -235,18 +186,11 @@ elif selected_script == "US Volume Matching":
 # --- SCRIPT 3: INDIA SMA200 ---
 elif selected_script == "India SMA200":
     st.subheader("📈 India Stocks bouncing from SMA200 Scanner")
-    st.markdown("Scans for stocks reversing after touhing 200 SMA levels on the daily timeframes.")
-    st.markdown(" RSI (50-70): Current momentum is healthy but not exhausted")
-    st.markdown(" Trend: Price is currently moving toward the level")
-    
-    # Custom parameter inputs just for this script
-    n_bars = st.slider("Lookback Bars", min_value=20, max_value=200, value=100)
+    st.markdown("Scans for stocks reversing after touching 200 SMA levels on daily timeframes.")
     
     if st.button("Execute SMA 200", type="primary"):
         with st.spinner("Processing SMA 200 scan..."):
-            # Dynamically import and run your existing module
             india_sma200 = importlib.import_module("Sl_India_SMA200")
-            #checker = india_sma200.scan_stocks()            
             result_df = india_sma200.scan_stocks()
             
             if result_df is not None and not result_df.empty:
@@ -255,20 +199,13 @@ elif selected_script == "India SMA200":
             else:
                 st.warning("No levels matched current parameters.")
 
-
 # --- SCRIPT 4: US SMA200 ---
 elif selected_script == "US SMA200":
     st.subheader("📈 US Stocks bouncing from SMA200 Scanner")
-    st.markdown("Scans for stocks reversing after touching 200 SMA levels on the daily timeframes.")
-    st.markdown(" RSI (50-70): Current momentum is healthy but not exhausted")
-    st.markdown(" Trend: Price is currently moving toward the level")
-    
-    # Custom parameter inputs just for this script
-    n_bars = st.slider("Lookback Bars", min_value=20, max_value=200, value=100)
+    st.markdown("Scans for stocks reversing after touching 200 SMA levels on daily timeframes.")
     
     if st.button("Execute SMA 200", type="primary"):
         with st.spinner("Processing SMA 200 scan..."):
-            # Dynamically import and run your existing module
             us_sma200 = importlib.import_module("Sl_US_SMA500")
             result_df = us_sma200.scan_stocks()
             
@@ -278,17 +215,12 @@ elif selected_script == "US SMA200":
             else:
                 st.warning("No levels matched current parameters.")
 
-
-
 # --- SCRIPT 5: M stock Analyser ---
 elif selected_script == "M stock Analyser":
-    st.set_page_config(page_title="US Stock Quant Analyzer", layout="wide")
-    st.title("📈 US Stock Quantitative Analyzer")
+    st.subheader("📈 US Stock Quantitative Analyzer")
     st.markdown("Scores stocks via Sector-Normalized Z-Scores with real-time technical tracking.")
 
-    # Sidebar Controls for user inputs
-    st.sidebar.header("Configuration")
-    selected_sector = st.sidebar.selectbox("Select Universe / Sector Group",list(SECTORS.keys()))
+    selected_sector = st.sidebar.selectbox("Select Universe / Sector Group", list(SECTORS.keys()))
     top_n = st.sidebar.slider("Show Top N Stocks", min_value=5, max_value=30, value=10)
 
     if st.button("🚀 Run Analysis", type="primary"):
@@ -300,20 +232,14 @@ elif selected_script == "M stock Analyser":
             progress_bar.progress(pct)
             status_text.text(f"[{completed}/{total}] {text}...")
 
-        # Call the modular function from your script
         df = run_analysis(sector=selected_sector, top_n=top_n, progress_callback=update_streamlit_progress)
 
-        # Clear progress UI indicators
         progress_bar.empty()
         status_text.empty()
 
         if not df.empty:
             st.success(f"Analysis complete! Top {len(df)} stocks analyzed.")
-        
-            # Display as interactive web dataframe
             st.dataframe(df[["Ticker", "Name", "Sector", "Price", "PE", "PEG", "Rev_Pct", "Margin_Pct", "Total_Score", "RSI", "RVOL", "IV%"]], use_container_width=True)
-        
-            # Visual breakdown of scores
             st.subheader("📊 Quant Scores Breakdown")
             st.bar_chart(df.set_index("Ticker")["Total_Score"])
         else:
