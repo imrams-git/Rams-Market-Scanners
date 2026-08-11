@@ -1,5 +1,6 @@
 import streamlit as st
 import importlib
+import pandas as pd
 from m_stock_analyzer import run_analysis, SECTORS
 
 # 1. Page Configuration (Called ONCE at the absolute top)
