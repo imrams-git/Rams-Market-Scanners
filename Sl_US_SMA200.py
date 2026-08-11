@@ -5,10 +5,14 @@ import requests
 from datetime import datetime, timedelta
 import warnings
 import pytz
+import os
 from io import StringIO
+import sys
 
 # Suppress warnings for clean console output
 warnings.simplefilter(action='ignore', category=FutureWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="yfinance")
+warnings.filterwarnings("ignore", message=".*Timestamp.utcnow is deprecated.*")
 
 def calculate_rsi(series, period=14):
     """Calculates Wilder's Relative Strength Index (RSI)."""
@@ -23,7 +27,7 @@ def calculate_rsi(series, period=14):
     return 100 - (100 / (1 + rs))
 
 def fetch_sp500_tickers():
-        return ["A", "AAL", "AAP", "AAPL", "ABBV", "ABNB", "ABT", "ACI", "ACN", "ADBE", "ADI", "ADM", "ADP", "ADSK", "AEE",
+    return ["A", "AAL", "AAP", "AAPL", "ABBV", "ABNB", "ABT", "ACI", "ACN", "ADBE", "ADI", "ADM", "ADP", "ADSK", "AEE",
     "AEP", "AFL", "AFRM", "AGIO", "AIG", "AIZ", "AJG", "AKAM", "ALAB", "ALB", "ALGN", "ALK", "ALL", "ALLE", "ALLY",
     "ALNY", "AMAT", "AMC", "AMD", "AME", "AMGN", "AMN", "AMP", "AMT", "AMZN", "ANET", "AON", "AOS", "APA", "APD",
     "APH", "APP", "APTV", "ARE", "ARM", "ARNA", "ASGN", "ASML", "ATO", "AVB", "AVGO", "AVY", "AWK", "AXP", "AZN",
@@ -60,40 +64,54 @@ def fetch_sp500_tickers():
     "UDR", "UHS", "ULTA", "UNH", "UNM", "UNP", "UPS", "UPST", "URI", "V", "VFC", "VICI", "VLO", "VMC", "VNO",
     "VRSK", "VRSN", "VRT", "VRTX", "VTR", "VTRS", "VZ", "WAT", "WBA", "WBD", "WDAY", "WDC", "WEC", "WELL", "WFC",
     "WH", "WHR", "WM", "WMB", "WMT", "WPC", "WRB", "WRK", "WST", "WTW", "WY", "WYNN", "X", "XEL", "XOM",
-    "XRAY", "XRX", "XYL", "YUM", "ZBH", "ZBRA", "ZION", "ZM", "ZS", "ZTS", "SPCX"
-]
+    "XRAY", "XRX", "XYL", "YUM", "ZBH", "ZBRA", "ZION", "ZM", "ZS", "ZTS", "SPCX"]
 
-def scan_stocks():
-    print("Fetching S&P 500 stock list...")
-    tickers = fetch_sp500_tickers()
-    print(f"Successfully loaded {len(tickers)} symbols.\n")
+def scan_stocks(progress_callback=None):
+    raw_tickers = fetch_sp500_tickers()
+    tickers = [t.replace('.', '-') for t in raw_tickers]
+    total_tickers = len(tickers)
+    
+    if not progress_callback:
+        print(f"Successfully loaded {total_tickers} symbols.\n")
     
     end_date = datetime.now()
     start_date = end_date - timedelta(days=3 * 365)
+    
     eastern = pytz.timezone('US/Eastern')
-    successful_matches = []
-    
-    # ---------------------------------------------------------
-    # FIX: BULK DOWNLOAD 
-    # Fetches all 500 stocks in ONE network request to avoid bans
-    # ---------------------------------------------------------
-    print("Initiating bulk data download. Please wait...")
-    df_bulk = yf.download(tickers, start=start_date, end=end_date, progress=True)
-    print("\nDownload complete. Running technical scans...")
-    
-    # Create session strictly for the handful of fundamental checks at the end
     session = requests.Session()
     session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
     })
     
-    for ticker in tickers:
+    os.makedirs("output", exist_ok=True)
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    filename = f"output/sp500_data_{today_str}.csv"
+    
+    if os.path.exists(filename):
+        if not progress_callback:
+            print(f"Local data found for {today_str}. Loading from disk...")
+        df_bulk = pd.read_csv(filename, header=[0, 1], index_col=0, parse_dates=True)
+    else:
+        if not progress_callback:
+            print("No local data found. Initiating batch download...")
+        df_bulk = yf.download(tickers, start=start_date, end=end_date, progress=False, threads=False)
+        df_bulk.to_csv(filename)
+        if not progress_callback:
+            print(f"Data saved to {filename} for reuse.")
+        
+    if not progress_callback:
+        print("\nDownload/Load complete. Running mathematical filters...")
+
+    successful_matches = []
+    
+    for idx, ticker in enumerate(tickers):
+        if progress_callback:
+            progress_callback(idx + 1, total_tickers, ticker)
+            
         try:
-            # Safely check if ticker data was returned in the bulk download
             if 'Close' not in df_bulk.columns or ticker not in df_bulk['Close'].columns:
                 continue
                 
-            # Slice out the individual stock's data from the massive bulk DataFrame
             df_daily = pd.DataFrame({
                 'Open': df_bulk['Open'][ticker],
                 'Close': df_bulk['Close'][ticker],
@@ -105,9 +123,9 @@ def scan_stocks():
 
             # --- STAGE 1: Price ---
             current_price = float(df_daily['Close'].iloc[-1])
-            open_price = float(df_daily['Open'].iloc[-1])
+            prev_price = float(df_daily['Close'].iloc[-2])
             
-            if current_price <= 100 or current_price <= open_price: 
+            if current_price <= 5 or current_price <= prev_price:
                 continue
 
             # --- STAGE 2: Volume & Liquidity ---
@@ -115,14 +133,14 @@ def scan_stocks():
             current_vol = float(df_daily['Volume'].iloc[-1])
             avg_vol = float(df_daily['Vol_Avg'].iloc[-1])
             
-            if (avg_vol * current_price) < 5000000: 
+            if (avg_vol * current_price) < 10000000:
                 continue
 
             now_est = datetime.now(eastern)
             market_open = now_est.replace(hour=9, minute=30, second=0, microsecond=0)
             market_close = now_est.replace(hour=16, minute=0, second=0, microsecond=0)
             
-            if now_est.weekday() >= 5: 
+            if now_est.weekday() >= 5 or now_est >= market_close:
                 expected_vol = avg_vol
             elif market_open < now_est < market_close:
                 elapsed = (now_est - market_open).total_seconds() / 60
@@ -130,7 +148,8 @@ def scan_stocks():
             else:
                 expected_vol = avg_vol
 
-            if current_vol <= expected_vol:
+            volume_threshold = expected_vol * 0.5
+            if current_vol <= volume_threshold:
                 continue
 
             # --- STAGE 3: 200 SMA ---
@@ -138,7 +157,7 @@ def scan_stocks():
             current_sma200 = float(df_daily['SMA_200'].iloc[-1])
             
             lower_bound = current_sma200 * 1.0
-            upper_bound = current_sma200 * 1.05
+            upper_bound = current_sma200 * 1.1
             if not (lower_bound <= current_price <= upper_bound):
                 continue
 
@@ -161,12 +180,11 @@ def scan_stocks():
                 continue
 
             # --- STAGE 5: Fundamentals ---
-            # We ONLY query Yahoo individually here if the stock passed the math above
-            ticker_obj = yf.Ticker(ticker, session=session)
+            ticker_obj = yf.Ticker(ticker)
             info = ticker_obj.info
             
             market_cap = info.get('marketCap', 0)
-            if market_cap is None or market_cap < 5000000: 
+            if market_cap is None or market_cap < 100000000:
                 continue
                 
             calendar = ticker_obj.calendar
@@ -184,31 +202,73 @@ def scan_stocks():
             if skip_earnings:
                 continue
 
+            # --- Calculate % Difference from SMA200 ---
+            pct_diff = ((current_price - current_sma200) / current_sma200) * 100
+
             # --- Success ---
+            clean_ticker = ticker
             successful_matches.append({
-                "Ticker": ticker,
+                "Ticker": clean_ticker,
                 "Price": round(current_price, 2),
                 "200 SMA": round(current_sma200, 2),
+                "%diff": round(pct_diff, 2),
                 "D-RSI": round(daily_rsi, 2),
                 "W-RSI": round(weekly_rsi, 2),
                 "M-RSI": round(monthly_rsi, 2)
             })
-            print(f" MATCH FOUND: {ticker}")
+            
+            if not progress_callback:
+                print(f" MATCH FOUND: {clean_ticker}")
 
         except Exception as e:
+            if not progress_callback:
+                print(f" [!] Crash on {ticker}: {type(e).__name__} - {e}")
             continue
             
-    print("\n" + "="*60)
-    print("FINAL SCAN RESULTS (US MARKETS)")
-    print("="*60)
-    
-    if successful_matches:
-        results_df = pd.DataFrame(successful_matches)
-        print(results_df.to_string(index=False))
-    else:
-        print("0 results. (The code is functioning perfectly, but no stocks meet all technical criteria today).")
+    return successful_matches
 
-    session.close()
-
+# ==========================================
+# EXECUTION CONTROLLER (Terminal vs Web UI)
+# ==========================================
 if __name__ == "__main__":
-    scan_stocks()
+    # Check if executed via Streamlit
+    if 'streamlit' in sys.modules or os.environ.get('STREAMLIT_RUN'):
+        import streamlit as st
+        
+        st.set_page_config(page_title="S&P 500 SMA Scanner", layout="wide")
+        st.title("📈 S&P 500 Trend & Support Scanner")
+        st.write("Scanning S&P 500 stocks trading up to 20% above their 200 SMA with multi-timeframe RSI confirmation.")
+        
+        if st.button("🚀 Run Scan Now", type="primary"):
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            def update_progress(current, total, ticker_name):
+                pct = current / total
+                progress_bar.progress(pct)
+                status_text.text(f"Scanning symbol {current}/{total}: {ticker_name}")
+                
+            matches = scan_stocks(progress_callback=update_progress)
+            
+            progress_bar.empty()
+            status_text.empty()
+            
+            if matches:
+                df_results = pd.DataFrame(matches)
+                df_results = df_results.sort_values(by="%diff", ascending=True)
+                st.success(f"Scan complete! Found {len(df_results)} matching stocks.")
+                st.dataframe(df_results, use_container_width=True)
+            else:
+                st.warning("0 results found matching current technical parameters.")
+    else:
+        # Standard Terminal Execution
+        matches = scan_stocks()
+        print("\n" + "="*60)
+        print("FINAL SCAN RESULTS")
+        print("="*60)
+        if matches:
+            results_df = pd.DataFrame(matches)
+            results_df = results_df.sort_values(by="%diff", ascending=True)
+            print(results_df.to_string(index=False))
+        else:
+            print("0 results. (The code is functioning perfectly, but no stocks meet all technical criteria today).")
