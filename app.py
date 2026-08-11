@@ -155,10 +155,11 @@ if selected_script == "India Volume Matching":
             
             if result_df is not None and not result_df.empty:
                 st.success("Scan Complete!")
-                st.subheader("🟢 BULLISH: TARGETING RESISTANCE")
-                st.dataframe(result_df[result_df["Imb"] == "ImbHigh"], hide_index=True, use_container_width=True)
-                st.subheader("🔴 BEARISH: TARGETING SUPPORT")
-                st.dataframe(result_df[result_df["Imb"] == "ImbLow"], hide_index=True, use_container_width=True)
+                #    python script already prints values using streamlit
+                # st.subheader("🟢 BULLISH: TARGETING RESISTANCE")
+                # st.dataframe(result_df[result_df["Imb"] == "ImbHigh"], hide_index=True, use_container_width=True)
+                # st.subheader("🔴 BEARISH: TARGETING SUPPORT")
+                # st.dataframe(result_df[result_df["Imb"] == "ImbLow"], hide_index=True, use_container_width=True)
             else:
                 st.warning("No levels matched current parameters.")
 
@@ -176,10 +177,11 @@ elif selected_script == "US Volume Matching":
             
             if result_df is not None and not result_df.empty:
                 st.success("Scan Complete!")
-                st.subheader("🟢 BULLISH: TARGETING RESISTANCE")
-                st.dataframe(result_df[result_df["Imb"] == "ImbHigh"], hide_index=True, use_container_width=True)
-                st.subheader("🔴 BEARISH: TARGETING SUPPORT")
-                st.dataframe(result_df[result_df["Imb"] == "ImbLow"], hide_index=True, use_container_width=True)
+                # python script already prints values using streamlit
+                # st.subheader("🟢 BULLISH: TARGETING RESISTANCE")
+                # st.dataframe(result_df[result_df["Imb"] == "ImbHigh"], hide_index=True, use_container_width=True)
+                # st.subheader("🔴 BEARISH: TARGETING SUPPORT")
+                # st.dataframe(result_df[result_df["Imb"] == "ImbLow"], hide_index=True, use_container_width=True)
             else:
                 st.warning("No levels matched current parameters.")
 
@@ -191,13 +193,18 @@ elif selected_script == "India SMA200":
     if st.button("Execute SMA 200", type="primary"):
         with st.spinner("Processing SMA 200 scan..."):
             india_sma200 = importlib.import_module("Sl_India_SMA200")
-            result_df = india_sma200.scan_stocks()
+            matches = india_sma200.scan_stocks()
             
-            if result_df is not None and not result_df.empty:
+            # Convert list to DataFrame safely
+            result_df = pd.DataFrame(matches) if matches else pd.DataFrame()
+            
+            if not result_df.empty:
                 st.success("Scan Complete!")
+                result_df = result_df.sort_values(by="%diff", ascending=True)
                 st.dataframe(result_df, hide_index=True, use_container_width=True)
             else:
-                st.warning("No levels matched current parameters.")
+                st.warning("0 results matched current technical parameters.")
+
 
 # --- SCRIPT 4: US SMA200 ---
 elif selected_script == "US SMA200":
@@ -207,13 +214,17 @@ elif selected_script == "US SMA200":
     if st.button("Execute SMA 200", type="primary"):
         with st.spinner("Processing SMA 200 scan..."):
             us_sma200 = importlib.import_module("Sl_US_SMA500")
-            result_df = us_sma200.scan_stocks()
+            matches = us_sma200.scan_stocks()
             
-            if result_df is not None and not result_df.empty:
+            # Convert list to DataFrame safely
+            result_df = pd.DataFrame(matches) if matches else pd.DataFrame()
+            
+            if not result_df.empty:
                 st.success("Scan Complete!")
+                result_df = result_df.sort_values(by="%diff", ascending=True)
                 st.dataframe(result_df, hide_index=True, use_container_width=True)
             else:
-                st.warning("No levels matched current parameters.")
+                st.warning("0 results matched current technical parameters.")
 
 # --- SCRIPT 5: M stock Analyser ---
 elif selected_script == "M stock Analyser":
