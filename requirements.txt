@@ -6,3 +6,6 @@ requests
 pytz
 tabulate
 colorama
+ta
+lxml
+google-genai
