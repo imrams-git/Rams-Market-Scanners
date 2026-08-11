@@ -1,5 +1,6 @@
 import streamlit as st
 import importlib
+from m_stock_analyzer import run_analysis, SECTORS
 
 # 1. Page Configuration
 st.set_page_config(page_title="Trading Algorithm Dashboard", layout="wide")
@@ -9,47 +10,52 @@ st.title("🎛️ Algorithmic Trading Command Center")
 st.sidebar.header("Select Strategy")
 selected_script = st.sidebar.selectbox(
     "Choose an analysis tool:",
-    ["US Volume Matching", "M stock Analyser", "India Volume Matching", "India SMA200"]
-)
+    ["India Volume Matching", 
+     "US Volume Matching", 
+     "India SMA200",
+     "US SMA200",
+     "M stock Analyser"])
 
 # Shared Universal Symbol List
 US_SYMBOLS = [
-        "SPY", "QQQ", "IWM", "GLD", "AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA", 
-        "JNJ", "V", "PG", "AVGO", "NVDA", "UNH", "HD", "MA", "DIS", "PYPL", "BAC", 
-        "CMCSA", "ADBE", "NFLX", "XOM", "PFE", "KO", "CSCO", "PEP", "T", "ABT", "CVX", 
-        "CRM", "INTC", "ABBV", "WMT", "MCD", "VZ", "ACN", "NKE", "MDT", "NEE", "COST", 
-        "LIN", "BMY", "TXN", "DHR", "QCOM", "LLY", "HON", "PM", "ORCL", "AMGN", "IBM", 
-        "SBUX", "MS", "RTX", "LOW", "GE", "INTU", "CAT", "BLK", "UPS", "GILD", "MMM", 
-        "DE", "GS", "NOW", "PLD", "SCHW", "BA", "ADP", "AMD", "C", "CVS", "ISRG", 
-        "SPGI", "MO", "BKNG", "AXP", "SYK", "ZTS", "AMT", "FIS", "MDLZ", "TJX", "TMO", 
-        "BDX", "EQIX", "LMT", "PNC", "GM", "ELV", "DUK", "SO", "APD", "ICE", "CL", 
-        "CCI", "NSC", "TMUS", "CSX", "ITW", "ECL", "SHW", "WM", "EMR", "CME", "TGT", 
-        "HUM", "KMB", "ROST", "ADI", "ADSK", "MCO", "LRCX", "BIIB", "BSX", "MRK", 
-        "HCA", "VRTX", "MAR", "AON", "AEP", "MET", "EXC", "COF", "OXY", "PGR", "STZ", 
-        "EW", "APH", "REGN", "DLR", "CTSH", "ORLY", "KMI", "PCAR", "VLO", "KHC", 
-        "ALL", "HIG", "VRSN", "BAX", "MNST", "PEG", "EOG", "FDX", "D", "ROK", "TEL", 
-        "DXCM", "CDW", "NOC", "PAYX", "CTAS", "XEL", "CNC", "HOLX", "RMD", "HWM", 
-        "MTD", "TSCO", "FTNT", "IDXX", "MTB", "BKR", "LHX", "A", "SRE", "CPRT", "WRB", 
-        "RSG", "DOV", "CMS", "ED", "AJG", "WEC", "HST", "MCHP", "KMX", "PH", "EFX", 
-        "CARR", "ETN", "AFL", "INCY", "ALGN", "CDNS", "COO", "MCK", "TT", "BIO", "KR", 
-        "PNR", "AVY", "KEYS", "PLTR", "TEM", "SYM", "CTRA", "PPG", "SWKS", "ZBH", 
-        "EXR", "DXC", "CEG", "TSM", "BIDU", "JD", "PDD", "ZM", "DOCU", "SNAP", 
-        "OKTA", "PTON", "RBLX", "CRWD", "NET", "COIN", "ROKU", "TWLO", "BILI", "EA", 
-        "LULU", "TTWO", "MRNA", "SNPS", "ILMN", "ASML", "NXPI", "MU", "SIRI", "TEAM", 
-        "MELI", "KLAC", "EBAY", "PAYC", "MRVL", "AMAT", "FAST", "WDAY", "CHTR", "MTCH", 
-        "ANET", "VRSK", "ARM", "AZN", "DASH", "HOOD", "SHOP", "TRI", "ZS", "BBAI", 
-        "FRSH", "KNX", "HAL", "RDW", "BABA", "JPM", "WFC", "NU",
-        "BX", "CB", "MDLZ", "GD", "AIG", "DOW", "TRV", "CTVA", "MSCI", "ADM", 
-        "OTIS", "OKE", "VICI", "GWW", "WELL", "HPQ", "VMC", "STT", "HPE", "DVN", 
-        "FITB", "CBRE", "O", "WDC", "WY", "AME", "DAL", "UAL", "AEE", "LVS", "RF", 
-        "GLW", "XYL", "VTR", "TDG", "STX", "TROW", "AWK", "ES", "DTE", "F", "BBY", 
-        "FE", "SWK", "SYY", "ZBRA", "INVH", "BRO", "MGM", "GEN", "LNT", 
-        "EXPE", "CNP", "CINF", "ATO", "SJM", "DRI", "FSLR", "AKAM", "JKHY", "IRM", 
-        "NRG", "MAS", "L", "TYL", "DG", "WST", "BALL", "CAH", "TRMB", "EPAM", "WAT", 
-        "POOL", "MOH", "VRT", "SMCI", "RCL", "CCL", "HRL", "CAG", "ALLE", "TPR", 
-        "VRSK", "MPWR", "ODFL", "LDOS", "GRMN", "TER", "HUBB", "WST",
-        "MOH", "SMCI", "RCL", "CCL", "AVAV", "QURE", "APP", "KTOS", "VST", "RXRX", 
-        "VKTX", "SNOW", "GEV", "PANW", "DDOG", "UNP", "CMG"    
+        "A", "AAL", "AAP", "AAPL", "ABBV", "ABNB", "ABT", "ACI", "ACN", "ADBE", "ADI", "ADM", "ADP", "ADSK", "AEE",
+    "AEP", "AFL", "AFRM", "AGIO", "AIG", "AIZ", "AJG", "AKAM", "ALAB", "ALB", "ALGN", "ALK", "ALL", "ALLE", "ALLY",
+    "ALNY", "AMAT", "AMC", "AMD", "AME", "AMGN", "AMN", "AMP", "AMT", "AMZN", "ANET", "AON", "AOS", "APA", "APD",
+    "APH", "APP", "APTV", "ARE", "ARM", "ARNA", "ASGN", "ASML", "ATO", "AVB", "AVGO", "AVY", "AWK", "AXP", "AZN",
+    "AZO", "BA", "BABA", "BAC", "BALL", "BAX", "BBAI", "BBBY", "BBY", "BDX", "BEN", "BIDU", "BIIB", "BILI", "BIO",
+    "BJ", "BK", "BKNG", "BKR", "BLK", "BLMN", "BLUE", "BMRN", "BMY", "BR", "BRK.B", "BRO", "BSX", "BWA", "BX",
+    "BXP", "C", "CAH", "CAKE", "CARR", "CAT", "CB", "CBOE", "CBRE", "CCI", "CCL", "CDAY", "CDNS", "CDW", "CE",
+    "CEG", "CF", "CFG", "CHD", "CHH", "CHRW", "CHTR", "CI", "CINF", "CINT", "CL", "CLX", "CMA", "CMCSA", "CME",
+    "CMG", "CMI", "CMS", "CNC", "CNP", "COF", "COIN", "COO", "COST", "COTY", "CPB", "CPRT", "CPT", "CRL", "CRM",
+    "CRWD", "CSCO", "CSX", "CTAS", "CTLT", "CTRA", "CTSH", "CTVA", "CUBE", "CVS", "CVX", "CZR", "D", "DAL", "DASH",
+    "DD", "DDOG", "DE", "DFS", "DG", "DHR", "DIS", "DKNG", "DLR", "DLTR", "DOCU", "DOV", "DOW", "DPZ", "DRI",
+    "DTE", "DUK", "DVA", "DVN", "DXC", "DXCM", "EA", "EAT", "EBAY", "ECL", "ED", "EFX", "EL", "ELV", "EMN",
+    "EMR", "ENPH", "EOG", "EPAM", "EQIX", "EQR", "EQT", "ES", "ESS", "ETN", "EW", "EXAS", "EXC", "EXPD", "EXPE",
+    "EXR", "F", "FAST", "FBHS", "FCX", "FDS", "FDX", "FE", "FFIV", "FGEN", "FIS", "FITB", "FLS", "FMC", "FOX",
+    "FOXA", "FRSH", "FRT", "FSLR", "FTI", "FTNT", "GD", "GE", "GEHC", "GEN", "GEV", "GGG", "GILD", "GIS", "GL",
+    "GLD", "GLPG", "GLW", "GM", "GME", "GNRC", "GOOG", "GOOGL", "GPC", "GPS", "GRMN", "GS", "GWW", "H", "HAL",
+    "HAS", "HBAN", "HCA", "HD", "HES", "HIG", "HII", "HLT", "HOLX", "HON", "HOOD", "HP", "HPE", "HPQ", "HST",
+    "HSY", "HUBB", "HUM", "HUN", "HWM", "IBM", "ICE", "IDXX", "IFF", "ILMN", "INCY", "INSU", "INTC", "INTU", "INVH",
+    "IP", "IR", "IRM", "ISRG", "ITW", "IVZ", "IWM", "JBHT", "JCI", "JD", "JKHY", "JNJ", "JNPR", "JPM", "K",
+    "KDP", "KEY", "KEYS", "KFY", "KHC", "KIM", "KLAC", "KMB", "KMI", "KMX", "KNX", "KO", "KR", "L", "LCID",
+    "LDOS", "LHX", "LIN", "LLY", "LMT", "LNT", "LOW", "LRCX", "LULU", "LUV", "LVS", "LYB", "LYV", "MA", "MAA",
+    "MAN", "MAR", "MAS", "MAT", "MCD", "MCHP", "MCK", "MCO", "MDLZ", "MDT", "MELI", "MET", "META", "MGM", "MKC",
+    "MKTX", "MLM", "MMC", "MMM", "MNST", "MO", "MOH", "MOS", "MPC", "MPWR", "MRK", "MRNA", "MRO", "MRVL", "MS",
+    "MSCI", "MSFT", "MSTR", "MTB", "MTCH", "MTD", "MU", "MYOV", "NBR", "NCLH", "NDAQ", "NEE", "NEM", "NET", "NFLX",
+    "NKE", "NMIH", "NNN", "NOC", "NOV", "NOW", "NRG", "NSC", "NTAP", "NTRS", "NU", "NUE", "NVDA", "NWS", "NWSA",
+    "NXPI", "O", "ODFL", "OGN", "OKE", "OKTA", "ORCL", "ORLY", "OTIS", "OXY", "PANW", "PARA", "PAYC", "PAYX", "PBI",
+    "PCAR", "PDD", "PEAK", "PEG", "PENN", "PEP", "PFE", "PFG", "PG", "PGR", "PH", "PKG", "PKI", "PLD", "PLTR",
+    "PM", "PNC", "PNR", "PODD", "POOL", "PPG", "PRU", "PSA", "PSX", "PTC", "PTON", "PYPL", "QCOM", "QD", "QQQ",
+    "QSR", "RAD", "RBLX", "RCL", "RDW", "REG", "REGN", "RF", "RGNX", "RHI", "RIVN", "RL", "RMD", "RNG", "ROK",
+    "ROKU", "ROL", "ROP", "ROST", "RS", "RSG", "RTX", "SAGE", "SBAC", "SBUX", "SCHW", "SEDG", "SEE", "SFM", "SHOP",
+    "SHW", "SIRI", "SJM", "SLB", "SLG", "SMCI", "SNA", "SNAP", "SNOW", "SNPS", "SO", "SPG", "SPGI", "SPY", "SRE",
+    "SRPT", "STE", "STLD", "STT", "STX", "STZ", "SWK", "SWKS", "SYF", "SYK", "SYM", "SYY", "T", "TDG", "TEAM",
+    "TECH", "TEL", "TEM", "TER", "TFC", "TGT", "TJX", "TMO", "TMUS", "TPR", "TRGP", "TRI", "TRIP", "TRMB", "TROW",
+    "TRV", "TSCO", "TSLA", "TSM", "TT", "TTWO", "TWLO", "TXN", "TXRH", "TXT", "TYL", "U", "UA", "UAA", "UAL",
+    "UDR", "UHS", "ULTA", "UNH", "UNM", "UNP", "UPS", "UPST", "URI", "V", "VFC", "VICI", "VLO", "VMC", "VNO",
+    "VRSK", "VRSN", "VRT", "VRTX", "VTR", "VTRS", "VZ", "WAT", "WBA", "WBD", "WDAY", "WDC", "WEC", "WELL", "WFC",
+    "WH", "WHR", "WM", "WMB", "WMT", "WPC", "WRB", "WRK", "WST", "WTW", "WY", "WYNN", "X", "XEL", "XOM",
+    "XRAY", "XRX", "XYL", "YUM", "ZBH", "ZBRA", "ZION", "ZM", "ZS", "ZTS", "SPCX"
 ]
 
 INDIA_SYMBOLS = [
@@ -163,10 +169,15 @@ st.sidebar.info(f"Active Script Configuration: **{selected_script}**")
 # ROUTING LOGIC BASED ON USER SELECTION
 # ==========================================
 
-# --- SCRIPT 1: US Volume Matching ---
-if selected_script == "US Volume Matching":
+# --- SCRIPT 1: INDIA VOLUME MATCHING ---
+if selected_script == "India Volume Matching":
     st.subheader("📈 Institutional Volume Magnetism Scanner")
-    st.markdown("Scans for unmitigated high-volume levels on the 30m, 1Hr, 4Hr, 1D timeframes.")
+    st.markdown("This script scans for high-volume momentum candles and checking if their origins (support/resistance levels) remain unbroken by subsequent price action. These are the filters:")
+    st.markdown(" High Volume: Stock must have >1.0x the average volume")
+    st.markdown(" Imbalance: The Stock's close must show strong directional pressure (>70%)")
+    st.markdown(" Unbroken: The previous high/low price level of the stick must never have been touched since it formed")
+    st.markdown(" RSI (50-70): Current momentum is healthy but not exhausted")
+    st.markdown(" Trend: Price is currently moving toward the level")
     
     # Custom parameter inputs just for this script
     n_bars = st.slider("Lookback Bars", min_value=20, max_value=200, value=100)
@@ -174,59 +185,7 @@ if selected_script == "US Volume Matching":
     if st.button("Execute Volume Scan", type="primary"):
         with st.spinner("Processing volume imbalances..."):
             # Dynamically import and run your existing module
-            import Sl_us_matching
-            us_matching = importlib.reload(Sl_us_matching)
-            checker = us_matching.VolumeAlertChecker()
-            
-            # Run and capture data
-            result_df = checker.run(US_SYMBOLS, n_bars=n_bars)
-            
-            if result_df is not None and not result_df.empty:
-                st.success("Scan Complete!")
-                st.subheader("🟢 BULLISH: TARGETING RESISTANCE")
-                st.dataframe(result_df[result_df["Imb"] == "ImbHigh"], hide_index=True, use_container_width=True)
-                st.subheader("🔴 BEARISH: TARGETING SUPPORT")
-                st.dataframe(result_df[result_df["Imb"] == "ImbLow"], hide_index=True, use_container_width=True)
-            else:
-                st.warning("No levels matched current parameters.")
-
-# --- SCRIPT 2: M stock Analyser ---
-elif selected_script == "M stock Analyser":
-    st.subheader("🦅 Mathavan's Stock Analyser")
-    st.markdown("Based on Mathavan's Claude script")
-    
-    # Custom parameters for options script
-    target_delta = st.number_input("Target OTM Delta", value=0.15, step=0.05)
-    dte = st.slider("Days to Expiration (DTE)", min_value=1, max_value=60, value=45)
-    
-    if st.button("Scan Options Market", type="primary"):
-        with st.spinner("Fetching option chains from Yahoo Finance..."):
-            try:
-                # Dynamically import your second script (m_stock_analyzer.py)
-                import options_scanner
-                opt_scan = importlib.reload(options_scanner)
-                
-                # Assuming your other script has a function or class to call:
-                # result_df = opt_scan.run_options_analysis(US_SYMBOLS, target_delta, dte)
-                # st.dataframe(result_df, hide_index=True, use_container_width=True)
-                
-                st.info("Placeholder: This is where your options script output will render.")
-            except ModuleNotFoundError:
-                st.error("Missing file: Ensure 'options_scanner.py' is in the same folder.")
-
-# --- SCRIPT 3: INDIA VOLUME MATCHING ---
-elif selected_script == "India Volume Matching":
-    st.subheader("📈 Institutional Volume Magnetism Scanner")
-    st.markdown("Scans for unmitigated high-volume levels on the 30m, 1Hr, 4Hr and 1D timeframes.")
-    
-    # Custom parameter inputs just for this script
-    n_bars = st.slider("Lookback Bars", min_value=20, max_value=200, value=100)
-    
-    if st.button("Execute Volume Scan", type="primary"):
-        with st.spinner("Processing volume imbalances..."):
-            # Dynamically import and run your existing module
-            import Sl_india_matching
-            india_matching = importlib.reload(Sl_india_matching)
+            india_matching = importlib.reload("Sl_India_matching") 
             checker = india_matching.VolumeAlertChecker()
             
             # Run and capture data
@@ -241,10 +200,44 @@ elif selected_script == "India Volume Matching":
             else:
                 st.warning("No levels matched current parameters.")
 
-# --- SCRIPT 4: INDIA SMA 200 ---
+
+# --- SCRIPT 2: US Volume Matching ---
+elif selected_script == "US Volume Matching":
+    st.subheader("📈 Institutional Volume Magnetism Scanner")
+    st.markdown("This script scans for high-volume momentum candles and checking if their origins (support/resistance levels) remain unbroken by subsequent price action. These are the filters:")
+    st.markdown(" High Volume: Stock must have >1.0x the average volume")
+    st.markdown(" Imbalance: The Stock's close must show strong directional pressure (>70%)")
+    st.markdown(" Unbroken: The previous high/low price level of the stick must never have been touched since it formed")
+    st.markdown(" RSI (50-70): Current momentum is healthy but not exhausted")
+    st.markdown(" Trend: Price is currently moving toward the level")
+    
+    # Custom parameter inputs just for this script
+    n_bars = st.slider("Lookback Bars", min_value=20, max_value=200, value=100)
+    
+    if st.button("Execute Volume Scan", type="primary"):
+        with st.spinner("Processing volume imbalances..."):
+            # Dynamically import and run your existing module
+            us_matching = importlib.import_module("Sl_US_matching")
+            checker = us_matching.VolumeAlertChecker()
+            
+            # Run and capture data
+            result_df = checker.run(US_SYMBOLS, n_bars=n_bars)
+            
+            if result_df is not None and not result_df.empty:
+                st.success("Scan Complete!")
+                st.subheader("🟢 BULLISH: TARGETING RESISTANCE")
+                st.dataframe(result_df[result_df["Imb"] == "ImbHigh"], hide_index=True, use_container_width=True)
+                st.subheader("🔴 BEARISH: TARGETING SUPPORT")
+                st.dataframe(result_df[result_df["Imb"] == "ImbLow"], hide_index=True, use_container_width=True)
+            else:
+                st.warning("No levels matched current parameters.")
+
+# --- SCRIPT 3: INDIA SMA200 ---
 elif selected_script == "India SMA200":
     st.subheader("📈 India Stocks bouncing from SMA200 Scanner")
     st.markdown("Scans for stocks reversing after touhing 200 SMA levels on the daily timeframes.")
+    st.markdown(" RSI (50-70): Current momentum is healthy but not exhausted")
+    st.markdown(" Trend: Price is currently moving toward the level")
     
     # Custom parameter inputs just for this script
     n_bars = st.slider("Lookback Bars", min_value=20, max_value=200, value=100)
@@ -252,8 +245,7 @@ elif selected_script == "India SMA200":
     if st.button("Execute SMA 200", type="primary"):
         with st.spinner("Processing SMA 200 scan..."):
             # Dynamically import and run your existing module
-            import Sl_India_SMA200
-            india_sma200 = importlib.reload(Sl_India_SMA200)
+            india_sma200 = importlib.import_module("Sl_India_SMA200")
             #checker = india_sma200.scan_stocks()            
             result_df = india_sma200.scan_stocks()
             
@@ -262,3 +254,67 @@ elif selected_script == "India SMA200":
                 st.dataframe(result_df, hide_index=True, use_container_width=True)
             else:
                 st.warning("No levels matched current parameters.")
+
+
+# --- SCRIPT 4: US SMA200 ---
+elif selected_script == "US SMA200":
+    st.subheader("📈 US Stocks bouncing from SMA200 Scanner")
+    st.markdown("Scans for stocks reversing after touching 200 SMA levels on the daily timeframes.")
+    st.markdown(" RSI (50-70): Current momentum is healthy but not exhausted")
+    st.markdown(" Trend: Price is currently moving toward the level")
+    
+    # Custom parameter inputs just for this script
+    n_bars = st.slider("Lookback Bars", min_value=20, max_value=200, value=100)
+    
+    if st.button("Execute SMA 200", type="primary"):
+        with st.spinner("Processing SMA 200 scan..."):
+            # Dynamically import and run your existing module
+            us_sma200 = importlib.import_module("Sl_US_SMA500")
+            result_df = us_sma200.scan_stocks()
+            
+            if result_df is not None and not result_df.empty:
+                st.success("Scan Complete!")
+                st.dataframe(result_df, hide_index=True, use_container_width=True)
+            else:
+                st.warning("No levels matched current parameters.")
+
+
+
+# --- SCRIPT 5: M stock Analyser ---
+elif selected_script == "M stock Analyser":
+    st.set_page_config(page_title="US Stock Quant Analyzer", layout="wide")
+    st.title("📈 US Stock Quantitative Analyzer")
+    st.markdown("Scores stocks via Sector-Normalized Z-Scores with real-time technical tracking.")
+
+    # Sidebar Controls for user inputs
+    st.sidebar.header("Configuration")
+    selected_sector = st.sidebar.selectbox("Select Universe / Sector Group",list(SECTORS.keys()))
+    top_n = st.sidebar.slider("Show Top N Stocks", min_value=5, max_value=30, value=10)
+
+    if st.button("🚀 Run Analysis", type="primary"):
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        def update_streamlit_progress(completed, total, text):
+            pct = completed / total
+            progress_bar.progress(pct)
+            status_text.text(f"[{completed}/{total}] {text}...")
+
+        # Call the modular function from your script
+        df = run_analysis(sector=selected_sector, top_n=top_n, progress_callback=update_streamlit_progress)
+
+        # Clear progress UI indicators
+        progress_bar.empty()
+        status_text.empty()
+
+        if not df.empty:
+            st.success(f"Analysis complete! Top {len(df)} stocks analyzed.")
+        
+            # Display as interactive web dataframe
+            st.dataframe(df[["Ticker", "Name", "Sector", "Price", "PE", "PEG", "Rev_Pct", "Margin_Pct", "Total_Score", "RSI", "RVOL", "IV%"]], use_container_width=True)
+        
+            # Visual breakdown of scores
+            st.subheader("📊 Quant Scores Breakdown")
+            st.bar_chart(df.set_index("Ticker")["Total_Score"])
+        else:
+            st.error("No valid stock data could be retrieved. Try again later.")
