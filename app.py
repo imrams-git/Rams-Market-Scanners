@@ -214,7 +214,7 @@ elif selected_script == "US SMA200":
     
     if st.button("Execute SMA 200", type="primary"):
         with st.spinner("Processing SMA 200 scan..."):
-            us_sma200 = importlib.import_module("Sl_US_SMA500")
+            us_sma200 = importlib.import_module("Sl_US_SMA200")
             matches = us_sma200.scan_stocks()
             
             # Convert list to DataFrame safely
