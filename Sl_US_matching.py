@@ -7,7 +7,16 @@ import warnings
 import os
 import time
 import pytz
+import re
 from datetime import datetime
+from google import genai
+
+# Safely import streamlit without forcing browser execution context
+try:
+    import streamlit as st
+    HAS_STREAMLIT = True
+except ImportError:
+    HAS_STREAMLIT = False
 
 warnings.filterwarnings("ignore")
 
@@ -15,6 +24,22 @@ GREEN = "\033[92m"
 RED = "\033[91m"
 YELLOW = "\033[93m"
 RESET = "\033[0m"
+
+os.environ["GEMINI_API_KEY"] = "AQ.Ab8RN6LlYA9_yHAfIyqIkevLwBAIfnMk0c69DocN_4ivLGPDEw"
+
+def colorize_terminal_output(text: str) -> str:
+    colors = {
+        "[GREEN]": "\033[92m", "[RED]": "\033[91m", "[YELLOW]": "\033[93m",
+        "[CYAN]": "\033[96m", "[BLUE]": "\033[94m", "[RESET]": "\033[0m"
+    }
+    colored_text = text
+    for tag, ansi_code in colors.items():
+        colored_text = colored_text.replace(tag, ansi_code)
+    colored_text = re.sub(r'(\033\[[0-9;]*m[^\n]+)', r'\1\033[0m', colored_text)
+    return colored_text
+
+def strip_tags_for_file(text: str) -> str:
+    return re.sub(r'\[(GREEN|RED|YELLOW|CYAN|BLUE|RESET)\]', '', text)
 
 
 class VolumeAlertChecker:
@@ -31,7 +56,6 @@ class VolumeAlertChecker:
         atr_multiplier: float = 5.0,
         squeeze_length: int = 20,
         squeeze_multiplier: float = 1.5
-
     ):
         self.length = length
         self.high_volume_threshold = high_volume_threshold
@@ -94,7 +118,6 @@ class VolumeAlertChecker:
             return yf.download(tickers=symbols, period=period, interval=timeframe, group_by="ticker", threads=True, progress=False)
         except: return pd.DataFrame()
 
-
     def is_coiled_squeeze(self, df_d: pd.DataFrame) -> bool:
         """
         Determines if a stock is in a quiet, coiled squeeze on the Daily chart.
@@ -102,7 +125,6 @@ class VolumeAlertChecker:
         """
         if len(df_d) < self.squeeze_length:
             return False
-            
         close = df_d['Close']
         
         # 1. Calculate Standard Bollinger Bands (20 period, 2 StdDev)
@@ -140,17 +162,14 @@ class VolumeAlertChecker:
         if len(df) < 20 or len(df_d) < 55: return []
 
         # ---------------------------------------------------------
-        # NEW RULE 2 & 3: SUSTAINED DAILY TREND & VOLUME
+        # NEW RULE: SUSTAINED DAILY TREND & VOLUME
         # ---------------------------------------------------------
-        
-        # 1. Macro Trend Filter (50 DMA)
+
+        #Macro Trend Filter (50 DMA)
         df_d['50_DMA'] = df_d['Close'].rolling(window=50).mean()
         current_50_dma = df_d['50_DMA'].iloc[-1]
         cmp_price = df['Close'].iloc[-1]
-
-        if cmp_price <= current_50_dma:
-           return []
-
+        if cmp_price <= current_50_dma: return []
         # Calculate a 20-day baseline for Daily Volume to measure against
         df_d['AvgVol_20'] = df_d['Volume'].rolling(window=20).mean()
         
@@ -159,16 +178,18 @@ class VolumeAlertChecker:
         rvol_d_1_ago = df_d['Volume'].iloc[-2] / df_d['AvgVol_20'].iloc[-2]
         rvol_d_2_ago = df_d['Volume'].iloc[-3] / df_d['AvgVol_20'].iloc[-3]
 
-        # RULE 2 & 3 CHECK: Bullish Steady Accumulation
+        # CHECK: Bullish Steady Accumulation
         # Price is rising day-by-day AND volume is >= 1.0 on the previous 2 days
         is_steady_bull = (
+            (cmp_price >= current_50_dma) and
             (rvol_d_1_ago >= 1.0) and 
             (rvol_d_2_ago >= 1.0)
         )
 
-        # RULE 2 & 3 CHECK: Bearish Steady Distribution
+        # CHECK: Bearish Steady Distribution
         # Price is falling day-by-day AND volume is >= 1.0 on the previous 2 days
         is_steady_bear = (
+            (cmp_price <= current_50_dma) and
             (rvol_d_1_ago >= 1.0) and 
             (rvol_d_2_ago >= 1.0)
         )
@@ -182,7 +203,6 @@ class VolumeAlertChecker:
         # ---------------------------------------------------------
         
         is_coiled = self.is_coiled_squeeze(df_d)
-        
         df['RSI'] = self.calculate_rsi(df['Close'], self.rsi_period)
         df['ATR'] = self.calculate_atr(df, self.atr_period)
         df["AvgVol"] = df["Volume"].rolling(self.length).mean()
@@ -233,7 +253,6 @@ class VolumeAlertChecker:
                                  round(current_rvol_h, 2), round(rvol_d_today, 2), is_coiled])
         return valid_levels
 
-
     def add_fundamentals(self, df: pd.DataFrame) -> pd.DataFrame:
         unique_symbols = df['Symbol'].unique()
         fund_data = {}
@@ -244,53 +263,27 @@ class VolumeAlertChecker:
         for sym in unique_symbols:
             pe_str = "N/A"
             days_to_earn = "N/A"
-            
             try:
                 ticker = yf.Ticker(sym)
+                info = ticker.info
+                pe = info.get('trailingPE') or info.get('forwardPE')
+                if pe and pe > 0: pe_str = f"{pe:.1f}"
                 
-                # Fetch P/E Ratio (trailingPE or forwardPE fallback)
-                try:
-                    info = ticker.info
-                    pe = info.get('trailingPE', None)
-                    if pe is None:
-                        pe = info.get('forwardPE', None)
-                        
-                    if pe is not None and pe > 0:
-                        pe_str = f"{pe:.1f}"
-                except Exception:
-                    pe_str = "ERR"
-                    
-                # Independent Try-Catch for Earnings Date
-                try:
-                    # Method 1: Try using the nested calendar property
-                    calendar = ticker.calendar
-                    if calendar is not None:
-                        if isinstance(calendar, dict) and 'Earnings Date' in calendar:
-                            dates = calendar['Earnings Date']
-                            if len(dates) > 0:
-                                next_date = dates[0].date() if hasattr(dates[0], 'date') else dates[0]
-                                days_to_earn = (next_date - datetime.now().date()).days
-                                
-                    # Method 2: Fallback to info timestamp if calendar failed
-                    if days_to_earn == "N/A" and hasattr(ticker, 'info'):
-                        earn_ts = ticker.info.get('earningsTimestamp') or ticker.info.get('earningsTimestampStart')
-                        if earn_ts:
-                            next_date = datetime.fromtimestamp(earn_ts).date()
-                            days_to_earn = (next_date - datetime.now().date()).days
-                except Exception:
-                    days_to_earn = "ERR"
-                
-            except Exception:
-                pass # Main ticker assignment failed
-                
+                calendar = ticker.calendar
+                if calendar and isinstance(calendar, dict) and 'Earnings Date' in calendar:
+                    dates = calendar['Earnings Date']
+                    if len(dates) > 0:
+                        next_date = dates[0].date() if hasattr(dates[0], 'date') else dates[0]
+                        days_to_earn = (next_date - datetime.now().date()).days
+            except:
+                pass
             fund_data[sym] = {"PE": pe_str, "Days2Earn": days_to_earn}
-            # Increased sleep to prevent IP blocking from Yahoo Finance
-            time.sleep(1) 
+            time.sleep(0.5)
+            
                 
         df['PE'] = df['Symbol'].map(lambda x: fund_data.get(x, {}).get('PE', 'N/A'))
         df['Days2Earn'] = df['Symbol'].map(lambda x: fund_data.get(x, {}).get('Days2Earn', 'N/A'))
         return df
-
 
     def run(self, symbols: List[str], n_bars: int = 100):
         rows = []
@@ -308,7 +301,7 @@ class VolumeAlertChecker:
                     results = self.analyze_symbol(intraday_data, full_daily_data, sym, n_bars)
                     for res in results:
                         rows.append([res[0], tf_name] + res[1:])
-                time.sleep(1)
+                time.sleep(0.5)
 
         # Added explicit return for empty results to handle it properly in Streamlit
         if not rows: 
@@ -343,14 +336,84 @@ class VolumeAlertChecker:
 
         output_dir = 'output'
         if not os.path.exists(output_dir): os.makedirs(output_dir)
-        filepath = os.path.join(output_dir, f"US_Matching_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
+        timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filepath = os.path.join(output_dir, f"US_Matching_{timestamp_str}.csv")
         df.to_csv(filepath, index=False)
 
+        # Terminal Print Output
         self.print_section(df, "ImbLow", RED, "🔴 BEARISH: TARGETING SUPPORT")
         self.print_section(df, "ImbHigh", GREEN, "🟢 BULLISH: TARGETING RESISTANCE")
         print(f"\n✅ Results saved to {filepath}")
-        
-        # CRITICAL FIX: Return the fully processed DataFrame so Streamlit can render it
+
+        # Streamlit Browser Render Output (Only runs if script is invoked via `streamlit run`)
+        if HAS_STREAMLIT and st.runtime.exists():
+            st.success(f"Results saved to `{filepath}`")
+            st.subheader("🟢 Bullish Resistance Targets")
+            st.dataframe(df[df["Imb"] == "ImbHigh"], use_container_width=True)
+            st.subheader("🔴 Bearish Support Targets")
+            st.dataframe(df[df["Imb"] == "ImbLow"], use_container_width=True)
+
+        # ==================================================
+        # AUTOMATED GEMINI INTEGRATION & LOGGING
+        # ==================================================
+        print("\n🤖 Sending scan data to Gemini for automated analysis...")
+        try:
+            client = genai.Client()
+            csv_data_string = df.to_csv(index=False)
+
+            prompt = f"""
+            You are an elite quantitative trading assistant. Analyze the following scanner dataset and organize the output strictly into these four clean tiers:
+
+            1. 🚀 The Tier 1 Structural Alpha (High Conviction Buys)
+               - Requirements: Multi-timeframe confluence, Ago > 20, RVOL_D > 1.0, IsCoiled = True, D2Earn > 15 or D2Earn < -2 
+            2. 🏆 The Tier 2 Structural Alpha (Buys)
+               - Requirements: Ago > 5, RVOL_D > 0.8, IsCoiled = True or IsCoiled = False, D2Earn > 15 or D2Earn < -2 
+            3. 🎯 The High-Volume Momentum Plays
+               - Requirements: RVOL_D > 3.0, D2Earn > 15  or D2Earn < -2
+            4. ⚠️ The Warnings & Rejections
+               - Requirements: Low volume, structural conflicts, earnings risks, or poor risk profiles.
+
+            Formatting Rules:
+            1. Wrap key section headers, symbols, or signals in visual tags like:
+               - [GREEN] for Tier 1
+               - [YELLOW] for Tier 2
+               - [CYAN] for High-Volume Momentum
+               - [RED] for Warnings & rejections 
+               - [BLUE] for bearish setups/risks
+            - DO NOT print color tags at the end of lines (e.g., avoid symbols like '[/CYAN]' or '[/GREEN]'). Keep lines clean.
+            - Use plain ASCII borders like '----------------------------------------'.
+            - Keep descriptions concise, professional, and directly tied to the dataset.
+
+            Scan Data:
+            {csv_data_string}
+            """
+
+            response = client.models.generate_content(
+                model="gemini-3.6-flash",
+                contents=prompt,
+            )
+
+            raw_gemini_output = response.text
+            clean_log_file = strip_tags_for_file(raw_gemini_output)
+
+            # Print Colorized Output to Terminal
+            terminal_display = colorize_terminal_output(raw_gemini_output)
+            print("\n" + terminal_display + "\n")
+
+            # Render in Browser if Streamlit is active
+            if HAS_STREAMLIT and st.runtime.exists():
+                st.subheader("🤖 Gemini AI Quantitative Analysis")
+                st.markdown(raw_gemini_output)
+
+            ai_filepath = os.path.join(output_dir, f"Gemini_Analysis_{timestamp_str}.txt")
+            with open(ai_filepath, "w", encoding="utf-8") as f:
+                f.write(clean_log_file)
+
+            print(f"✅ Clean Gemini report saved to {ai_filepath}")
+
+        except Exception as e:
+            print(f"\n❌ Error communicating with Gemini API: {e}")
+
         return df
 
     def print_section(self, df, imb_type, color, title):
@@ -409,8 +472,16 @@ def main():
 ]
 
     checker = VolumeAlertChecker()
-    checker.run(symbols, n_bars=100)
-
+    
+    # Check if running via Streamlit browser server context
+    if HAS_STREAMLIT and st.runtime.exists():
+        st.title("🇮🇳 NSE Quantitative Scanner & Gemini Analysis")
+        if st.button("Run Scan"):
+            with st.spinner("Running scan and generating AI breakdown..."):
+                checker.run(symbols, n_bars=100)
+    else:
+        # Standard Terminal Execution (bypasses streamlit completely)
+        checker.run(symbols, n_bars=100)
 
 # ==================================================
 if __name__ == "__main__":
