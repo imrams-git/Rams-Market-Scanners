@@ -103,7 +103,7 @@ class VolumeAlertChecker:
 
     def get_batch_data(self, symbols: List[str], timeframe: str, period: str = "60d"):
         try:
-            return yf.download(tickers=symbols, period=period, interval=timeframe, group_by="ticker", threads=True, progress=False)
+            return yf.download(tickers=symbols, period=period, interval=timeframe, group_by="ticker", threads=False, progress=False)
         except: return pd.DataFrame()
 
     def is_coiled_squeeze(self, df_d: pd.DataFrame) -> bool:
