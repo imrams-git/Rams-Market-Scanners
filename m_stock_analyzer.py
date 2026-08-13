@@ -25,7 +25,7 @@ except ImportError:
 # ─────────────────────────────────────────────
 #  STOCK UNIVERSE
 # ─────────────────────────────────────────────
-US_SECTORS = {
+SECTORS = {
 {
     "Healthcare": [
         "A",
@@ -618,7 +618,7 @@ US_SECTORS = {
         "X"
     ]
 }
-US_SECTORS["all"] = list({t for tickers in US_SECTORS.values() for t in tickers})
+SECTORS["all"] = list({t for tickers in SECTORS.values() for t in tickers})
 
 # ─────────────────────────────────────────────
 #  SCORING WEIGHTS
@@ -775,13 +775,13 @@ def fetch_technicals(ticker: str) -> dict:
 #  MODULAR FUNCTION FOR STREAMLIT / TERMINAL
 # ─────────────────────────────────────────────
 
-def US_run_analysis(tickers=None, sector="stocks", top_n=10, progress_callback=None):
+def run_analysis(tickers=None, sector="stocks", top_n=10, progress_callback=None):
     """
     Core function that handles fetching and calculations. 
     Can be called from app.py or main().
     """
     if not tickers:
-        tickers = [t.upper() for t in US_SECTORS.get(sector, US_SECTORS["stocks"])]
+        tickers = [t.upper() for t in SECTORS.get(sector, SECTORS["stocks"])]
 
     raw_data = []
     completed = 0
@@ -842,7 +842,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="Sector-Normalized Stock Analyzer")
     parser.add_argument("--tickers", nargs="+", help="Custom ticker list")
-    parser.add_argument("--sector", default="stocks", choices=list(US_SECTORS.keys()))
+    parser.add_argument("--sector", default="stocks", choices=list(SECTORS.keys()))
     parser.add_argument("--top", type=int, default=10, help="Show top N stocks")
     args = parser.parse_args()
 
@@ -851,7 +851,7 @@ def main():
     print(f"{'═'*80}{Style.RESET_ALL}")
     print(f"  Fetching data via threading...\n")
 
-    df = US_run_analysis(tickers=args.tickers, sector=args.sector, top_n=args.top)
+    df = run_analysis(tickers=args.tickers, sector=args.sector, top_n=args.top)
 
     if df.empty:
         print(f"{Fore.RED}No data retrieved.{Style.RESET_ALL}")
