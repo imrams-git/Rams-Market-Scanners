@@ -301,7 +301,7 @@ def fetch_technicals(ticker_clean: str) -> dict:
 #  MODULAR FUNCTION FOR STREAMLIT / TERMINAL
 # ─────────────────────────────────────────────
 
-def India_run_analysis(tickers=None, sector="stocks", top_n=10, progress_callback=None):
+def India_run_analysis(tickers=None, sector="all", top_n=10, progress_callback=None):
     """
     Core function that handles fetching and calculations. 
     Can be called from app.py or main().
