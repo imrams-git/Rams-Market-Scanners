@@ -25,51 +25,94 @@ except ImportError:
 # ─────────────────────────────────────────────
 #  STOCK UNIVERSE
 # ─────────────────────────────────────────────
-SECTORS = {
-    "stocks": ["A", "AAL", "AAP", "AAPL", "ABBV", "ABNB", "ABT", "ACI", "ACN", "ADBE", "ADI", "ADM", "ADP", "ADSK", "AEE",
-    "AEP", "AFL", "AFRM", "AGIO", "AIG", "AIZ", "AJG", "AKAM", "ALAB", "ALB", "ALGN", "ALK", "ALL", "ALLE", "ALLY",
-    "ALNY", "AMAT", "AMC", "AMD", "AME", "AMGN", "AMN", "AMP", "AMT", "AMZN", "ANET", "AON", "AOS", "APA", "APD",
-    "APH", "APP", "APTV", "ARE", "ARM", "ARNA", "ASGN", "ASML", "ATO", "AVB", "AVGO", "AVY", "AWK", "AXP", "AZN",
-    "AZO", "BA", "BABA", "BAC", "BALL", "BAX", "BBAI", "BBBY", "BBY", "BDX", "BEN", "BIDU", "BIIB", "BILI", "BIO",
-    "BJ", "BK", "BKNG", "BKR", "BLK", "BLMN", "BLUE", "BMRN", "BMY", "BR", "BRK.B", "BRO", "BSX", "BWA", "BX",
-    "BXP", "C", "CAH", "CAKE", "CARR", "CAT", "CB", "CBOE", "CBRE", "CCI", "CCL", "CDAY", "CDNS", "CDW", "CE",
-    "CEG", "CF", "CFG", "CHD", "CHH", "CHRW", "CHTR", "CI", "CINF", "CINT", "CL", "CLX", "CMA", "CMCSA", "CME",
-    "CMG", "CMI", "CMS", "CNC", "CNP", "COF", "COIN", "COO", "COST", "COTY", "CPB", "CPRT", "CPT", "CRL", "CRM",
-    "CRWD", "CSCO", "CSX", "CTAS", "CTLT", "CTRA", "CTSH", "CTVA", "CUBE", "CVS", "CVX", "CZR", "D", "DAL", "DASH",
-    "DD", "DDOG", "DE", "DFS", "DG", "DHR", "DIS", "DKNG", "DLR", "DLTR", "DOCU", "DOV", "DOW", "DPZ", "DRI",
-    "DTE", "DUK", "DVA", "DVN", "DXC", "DXCM", "EA", "EAT", "EBAY", "ECL", "ED", "EFX", "EL", "ELV", "EMN",
-    "EMR", "ENPH", "EOG", "EPAM", "EQIX", "EQR", "EQT", "ES", "ESS", "ETN", "EW", "EXAS", "EXC", "EXPD", "EXPE",
-    "EXR", "F", "FAST", "FBHS", "FCX", "FDS", "FDX", "FE", "FFIV", "FGEN", "FIS", "FITB", "FLS", "FMC", "FOX",
-    "FOXA", "FRSH", "FRT", "FSLR", "FTI", "FTNT", "GD", "GE", "GEHC", "GEN", "GEV", "GGG", "GILD", "GIS", "GL",
-    "GLD", "GLPG", "GLW", "GM", "GME", "GNRC", "GOOG", "GOOGL", "GPC", "GPS", "GRMN", "GS", "GWW", "H", "HAL",
-    "HAS", "HBAN", "HCA", "HD", "HES", "HIG", "HII", "HLT", "HOLX", "HON", "HOOD", "HP", "HPE", "HPQ", "HST",
-    "HSY", "HUBB", "HUM", "HUN", "HWM", "IBM", "ICE", "IDXX", "IFF", "ILMN", "INCY", "INSU", "INTC", "INTU", "INVH",
-    "IP", "IR", "IRM", "ISRG", "ITW", "IVZ", "IWM", "JBHT", "JCI", "JD", "JKHY", "JNJ", "JNPR", "JPM", "K",
-    "KDP", "KEY", "KEYS", "KFY", "KHC", "KIM", "KLAC", "KMB", "KMI", "KMX", "KNX", "KO", "KR", "L", "LCID",
-    "LDOS", "LHX", "LIN", "LLY", "LMT", "LNT", "LOW", "LRCX", "LULU", "LUV", "LVS", "LYB", "LYV", "MA", "MAA",
-    "MAN", "MAR", "MAS", "MAT", "MCD", "MCHP", "MCK", "MCO", "MDLZ", "MDT", "MELI", "MET", "META", "MGM", "MKC",
-    "MKTX", "MLM", "MMC", "MMM", "MNST", "MO", "MOH", "MOS", "MPC", "MPWR", "MRK", "MRNA", "MRO", "MRVL", "MS",
-    "MSCI", "MSFT", "MSTR", "MTB", "MTCH", "MTD", "MU", "MYOV", "NBR", "NCLH", "NDAQ", "NEE", "NEM", "NET", "NFLX",
-    "NKE", "NMIH", "NNN", "NOC", "NOV", "NOW", "NRG", "NSC", "NTAP", "NTRS", "NU", "NUE", "NVDA", "NWS", "NWSA",
-    "NXPI", "O", "ODFL", "OGN", "OKE", "OKTA", "ORCL", "ORLY", "OTIS", "OXY", "PANW", "PARA", "PAYC", "PAYX", "PBI",
-    "PCAR", "PDD", "PEAK", "PEG", "PENN", "PEP", "PFE", "PFG", "PG", "PGR", "PH", "PKG", "PKI", "PLD", "PLTR",
-    "PM", "PNC", "PNR", "PODD", "POOL", "PPG", "PRU", "PSA", "PSX", "PTC", "PTON", "PYPL", "QCOM", "QD", "QQQ",
-    "QSR", "RAD", "RBLX", "RCL", "RDW", "REG", "REGN", "RF", "RGNX", "RHI", "RIVN", "RL", "RMD", "RNG", "ROK",
-    "ROKU", "ROL", "ROP", "ROST", "RS", "RSG", "RTX", "SAGE", "SBAC", "SBUX", "SCHW", "SEDG", "SEE", "SFM", "SHOP",
-    "SHW", "SIRI", "SJM", "SLB", "SLG", "SMCI", "SNA", "SNAP", "SNOW", "SNPS", "SO", "SPG", "SPGI", "SPY", "SRE",
-    "SRPT", "STE", "STLD", "STT", "STX", "STZ", "SWK", "SWKS", "SYF", "SYK", "SYM", "SYY", "T", "TDG", "TEAM",
-    "TECH", "TEL", "TEM", "TER", "TFC", "TGT", "TJX", "TMO", "TMUS", "TPR", "TRGP", "TRI", "TRIP", "TRMB", "TROW",
-    "TRV", "TSCO", "TSLA", "TSM", "TT", "TTWO", "TWLO", "TXN", "TXRH", "TXT", "TYL", "U", "UA", "UAA", "UAL",
-    "UDR", "UHS", "ULTA", "UNH", "UNM", "UNP", "UPS", "UPST", "URI", "V", "VFC", "VICI", "VLO", "VMC", "VNO",
-    "VRSK", "VRSN", "VRT", "VRTX", "VTR", "VTRS", "VZ", "WAT", "WBA", "WBD", "WDAY", "WDC", "WEC", "WELL", "WFC",
-    "WH", "WHR", "WM", "WMB", "WMT", "WPC", "WRB", "WRK", "WST", "WTW", "WY", "WYNN", "X", "XEL", "XOM",
-    "XRAY", "XRX", "XYL", "YUM", "ZBH", "ZBRA", "ZION", "ZM", "ZS", "ZTS", "SPCX"],
+US_STOCKS = {
+    "Healthcare": [
+        "A", "ABBV", "ABT", "AGIO", "ALGN", "ALNY", "AMGN", "AMN", "AZN", "BAX", "BDX", "BIIB",
+        "BIO", "BMRN", "BMY", "BSX", "CAH", "CI", "CNC", "COO", "CRL", "CVS", "DHR", "DVA",
+        "DXCM", "ELV", "EW", "GEHC", "GILD", "HCA", "HUM", "IDXX", "ILMN", "INCY", "ISRG", "JNJ",
+        "LLY", "MCK", "MDT", "MOH", "MRK", "MRNA", "MTD", "OGN", "PFE", "PODD", "REGN", "RGNX",
+        "RMD", "SRPT", "STE", "SYK", "TECH", "TEM", "TMO", "UHS", "UNH", "VRTX", "VTRS", "WAT",
+        "WST", "XRAY", "ZBH", "ZTS"
+    ],
+    "Industrials": [
+        "AAL", "ALK", "ALLE", "AME", "AOS", "BA", "CARR", "CAT", "CHRW", "CMI", "CPRT", "CSX",
+        "CTAS", "DAL", "DE", "DOV", "EFX", "EMR", "ETN", "EXPD", "FAST", "FDX", "FLS", "GD",
+        "GE", "GEV", "GGG", "GNRC", "GWW", "HII", "HON", "HUBB", "HWM", "IR", "ITW", "JBHT",
+        "JCI", "KFY", "KNX", "LHX", "LMT", "LUV", "MAN", "MAS", "MMM", "NOC", "NSC", "ODFL",
+        "OTIS", "PBI", "PCAR", "PH", "PNR", "POOL", "RDW", "RHI", "ROK", "RSG", "RTX", "SNA",
+        "SWK", "SYM", "TDG", "TRI", "TT", "TXT", "UAL", "UNP", "UPS", "URI", "VRSK", "VRT",
+        "WM", "XRX", "XYL", "SPCX"
+    ],
+    "Consumer Cyclical": [
+        "AAP", "ABNB", "AMZN", "APTV", "AVY", "AZO", "BABA", "BALL", "BBY", "BKNG", "BLMN", "BWA",
+        "CAKE", "CCL", "CHH", "CMG", "CZR", "DASH", "DKNG", "DPZ", "DRI", "EAT", "EBAY", "EXPE",
+        "F", "GM", "GME", "GPC", "H", "HAS", "HD", "HLT", "IP", "JD", "KMX", "LCID",
+        "LOW", "LULU", "LVS", "MAR", "MAT", "MCD", "MELI", "MGM", "NCLH", "NKE", "ORLY", "PDD",
+        "PENN", "PKG", "PTON", "QSR", "RCL", "RIVN", "RL", "ROL", "ROST", "SBUX", "TJX", "TPR",
+        "TRIP", "TSCO", "TSLA", "TXRH", "UA", "UAA", "ULTA", "VFC", "WH", "WHR", "WYNN", "YUM"
+    ],
+    "Technology": [
+        "AAPL", "ACN", "ADBE", "ADI", "ADP", "ADSK", "AKAM", "ALAB", "AMAT", "AMD", "ANET", "APH",
+        "ARM", "ASML", "AVGO", "BBAI", "BR", "CDNS", "CDW", "CINT", "CRM", "CRWD", "CSCO", "CTSH",
+        "DDOG", "DOCU", "DXC", "ENPH", "EPAM", "FFIV", "FIS", "FRSH", "FSLR", "FTNT", "GEN", "GLW",
+        "GRMN", "HPE", "HPQ", "IBM", "INTC", "INTU", "JKHY", "KEYS", "KLAC", "LDOS", "LRCX", "MCHP",
+        "MPWR", "MRVL", "MSFT", "MSTR", "MU", "NET", "NOW", "NTAP", "NVDA", "NXPI", "OKTA", "ORCL",
+        "PANW", "PARA", "PAYC", "PAYX", "PLTR", "PTC", "QCOM", "RNG", "ROP", "SEDG", "SHOP", "SMCI",
+        "SNOW", "SNPS", "STX", "SWKS", "TEAM", "TEL", "TER", "TRMB", "TSM", "TWLO", "TXN", "TYL",
+        "U", "VRSN", "WDAY", "WDC", "ZBRA", "ZM", "ZS"
+    ],
+    "Consumer Defensive": [
+        "ACI", "ADM", "BJ", "CHD", "CL", "CLX", "COST", "COTY", "CPB", "DG", "DLTR", "EL",
+        "GIS", "HSY", "KDP", "KHC", "KMB", "KO", "KR", "MDLZ", "MKC", "MNST", "MO", "PEP",
+        "PG", "PM", "SFM", "SJM", "STZ", "SYY", "TGT", "WMT"
+    ],
+    "Utilities": [
+        "AEE", "AEP", "ATO", "AWK", "CEG", "CMS", "CNP", "D", "DTE", "DUK", "ED", "ES",
+        "EXC", "FE", "LNT", "NEE", "NRG", "PEG", "SO", "SRE", "WEC", "XEL"
+    ],
+    "Financial Services": [
+        "AFL", "AFRM", "AIG", "AIZ", "AJG", "ALL", "ALLY", "AMP", "AON", "AXP", "BAC", "BEN",
+        "BLK", "BRO", "BX", "C", "CB", "CBOE", "CFG", "CINF", "CME", "COF", "COIN", "FDS",
+        "FITB", "GL", "GS", "HBAN", "HIG", "HOOD", "ICE", "IVZ", "JPM", "KEY", "L", "MA",
+        "MCO", "MET", "MKTX", "MS", "MSCI", "MTB", "NDAQ", "NMIH", "NTRS", "NU", "PFG", "PGR",
+        "PNC", "PRU", "PYPL", "RF", "SCHW", "SPGI", "STT", "SYF", "TFC", "TROW", "TRV", "UNM",
+        "UPST", "V", "WFC", "WRB", "WTW", "ZION"
+    ],
+    "Basic Materials": [
+        "ALB", "APD", "CE", "CF", "CTVA", "DD", "DOW", "ECL", "EMN", "FCX", "FMC", "HUN",
+        "IFF", "LIN", "LYB", "MLM", "MOS", "NEM", "NUE", "PPG", "RS", "SHW", "STLD", "VMC"
+    ],
+    "Communication Services": [
+        "AMC", "APP", "BIDU", "BILI", "CHTR", "CMCSA", "DIS", "EA", "FOX", "FOXA", "GOOG", "GOOGL",
+        "LYV", "META", "MTCH", "NFLX", "NWS", "NWSA", "RBLX", "ROKU", "SIRI", "SNAP", "T", "TMUS",
+        "TTWO", "VZ", "WBD"
+    ],
+    "Real Estate": [
+        "AMT", "ARE", "AVB", "BXP", "CBRE", "CCI", "CPT", "CUBE", "DLR", "EQIX", "EQR", "ESS",
+        "EXR", "FRT", "HST", "INVH", "IRM", "KIM", "MAA", "NNN", "O", "PLD", "PSA", "REG",
+        "SBAC", "SLG", "SPG", "UDR", "VICI", "VNO", "VTR", "WELL", "WPC", "WY"
+    ],
+    "Energy": [
+        "APA", "BKR", "CVX", "DVN", "EOG", "EQT", "FTI", "HAL", "HP", "KMI", "MPC", "NBR",
+        "NOV", "OKE", "OXY", "PSX", "SLB", "TRGP", "VLO", "WMB", "XOM"
+    ],
+    "Unknown": [
+        "ARNA", "ASGN", "BBBY", "BK", "BLUE", "BRK.B", "CDAY", "CMA", "CTLT", "CTRA", "DFS", "EXAS",
+        "FBHS", "FGEN", "GLD", "GLPG", "GPS", "HES", "HOLX", "INSU", "IWM", "JNPR", "K", "MMC",
+        "MRO", "MYOV", "PEAK", "PKI", "QD", "QQQ", "RAD", "SAGE", "SEE", "SPY", "WBA", "WRK",
+        "X"
+    ]
 }
-SECTORS["all"] = list({t for tickers in SECTORS.values() for t in tickers})
 
-# ─────────────────────────────────────────────
-#  SCORING WEIGHTS
-# ─────────────────────────────────────────────
+US_SECTORS = {sector_name: tickers for sector_name, tickers in US_STOCKS.items()}
+US_SECTORS["all"] = list({t for tickers in US_SECTORS.values() for t in tickers})
+
+TICKER_TO_SECTOR = {}
+for sec_name, tickers in US_SECTORS.items():
+    if sec_name != "all":
+        for t in tickers:
+            TICKER_TO_SECTOR[t.upper()] = sec_name
+
 WEIGHTS = {
     "pe_score":          0.15,
     "peg_score":         0.15,
@@ -115,13 +158,15 @@ def fetch_raw_data(ticker: str) -> dict | None:
         stock = yf.Ticker(ticker)
         info = stock.info
 
-        if not info or info.get("regularMarketPrice") is None:
+        if not info or (info.get("regularMarketPrice") is None and info.get("currentPrice") is None):
             return None
+
+        static_sector = TICKER_TO_SECTOR.get(ticker.upper(), "Other")
 
         return {
             "Ticker":        ticker,
             "Name":          info.get("shortName", ticker)[:22],
-            "Sector":        info.get("sector", "Unknown"),
+            "Sector":        static_sector,
             "Price":         safe(info.get("regularMarketPrice") or info.get("currentPrice")),
             "Low52":         safe(info.get("fiftyTwoWeekLow")),
             "High52":        safe(info.get("fiftyTwoWeekHigh")),
@@ -222,13 +267,13 @@ def fetch_technicals(ticker: str) -> dict:
 #  MODULAR FUNCTION FOR STREAMLIT / TERMINAL
 # ─────────────────────────────────────────────
 
-def run_analysis(tickers=None, sector="stocks", top_n=10, progress_callback=None):
+def US_run_analysis(tickers=None, sector="stocks", top_n=10, progress_callback=None):
     """
     Core function that handles fetching and calculations. 
     Can be called from app.py or main().
     """
     if not tickers:
-        tickers = [t.upper() for t in SECTORS.get(sector, SECTORS["stocks"])]
+        tickers = US_SECTORS.get(sector, US_SECTORS["all"])
 
     raw_data = []
     completed = 0
@@ -242,9 +287,9 @@ def run_analysis(tickers=None, sector="stocks", top_n=10, progress_callback=None
             
             # Update progress callback if given (useful for Streamlit progress bars)
             if progress_callback:
-                progress_callback(completed, total, f"Fetching {ticker}")
-            else:
-                print(f"  [{completed:03d}/{total:03d}] Fetching {ticker:<5}...", end="\r")
+                progress_callback(completed, total, f"Processed {completed}/{total}")
+            elif completed % 50 == 0 or completed == total:
+                print(f"  [Progress] Processed {completed} / {total} stocks...")            
             
             try:
                 result = future.result()
@@ -289,7 +334,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="Sector-Normalized Stock Analyzer")
     parser.add_argument("--tickers", nargs="+", help="Custom ticker list")
-    parser.add_argument("--sector", default="stocks", choices=list(SECTORS.keys()))
+    parser.add_argument("--sector", default="stocks", choices=list(US_SECTORS.keys()))
     parser.add_argument("--top", type=int, default=10, help="Show top N stocks")
     args = parser.parse_args()
 
@@ -298,7 +343,7 @@ def main():
     print(f"{'═'*80}{Style.RESET_ALL}")
     print(f"  Fetching data via threading...\n")
 
-    df = run_analysis(tickers=args.tickers, sector=args.sector, top_n=args.top)
+    df = US_run_analysis(tickers=args.tickers, sector=args.sector, top_n=args.top)
 
     if df.empty:
         print(f"{Fore.RED}No data retrieved.{Style.RESET_ALL}")
@@ -320,6 +365,7 @@ def main():
     
     print("\n" + tabulate(table_data, headers=headers, tablefmt="rounded_outline"))
 
+    # --- SIGNALS & PROGRESS BARS BLOCK ---
     print(f"\n{Fore.CYAN}  SIGNALS{Style.RESET_ALL}")
     print(f"  {'─'*45}")
     for _, row in df.iterrows():
@@ -334,7 +380,7 @@ def main():
         elif score >= 45: sig_text = f"{Fore.YELLOW}● HOLD{Style.RESET_ALL}"
         else: sig_text = f"{Fore.RED}▼ PASS{Style.RESET_ALL}"
 
-        print(f"  {row['Ticker']:<6} {bar}  {score:>5.1f}  {sig_text}")
+        print(f"  {row['Ticker']:<15} {bar}  {score:>5.1f}  {sig_text}")
 
 if __name__ == "__main__":
     main()
