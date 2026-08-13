@@ -1,7 +1,8 @@
 import streamlit as st
 import importlib
 import pandas as pd
-from m_stock_analyzer import run_analysis, SECTORS
+from M_US_stock_analyzer import US_run_analysis, US_SECTORS
+from M_India_stock_analyzer import India_run_analysis, INDIA_SECTORS
 
 # 1. Page Configuration (Called ONCE at the absolute top)
 st.set_page_config(page_title="Trading Algorithm Dashboard", layout="wide")
@@ -14,7 +15,8 @@ selected_script = st.sidebar.selectbox(
      "US Volume Matching", 
      "India SMA200",
      "US SMA200",
-     "M stock Analyser"])
+     "M US stock Analyser",
+     "M India stock Analyser"])
 
 st.sidebar.markdown("---")
 st.sidebar.info(f"Active Script Configuration: **{selected_script}**")
@@ -228,11 +230,11 @@ elif selected_script == "US SMA200":
                 st.warning("0 results matched current technical parameters.")
 
 # --- SCRIPT 5: M stock Analyser ---
-elif selected_script == "M stock Analyser":
+elif selected_script == "M US stock Analyser":
     st.subheader("📈 US Stock Quantitative Analyzer")
     st.markdown("Scores stocks via Sector-Normalized Z-Scores with real-time technical tracking.")
 
-    selected_sector = st.sidebar.selectbox("Select Universe / Sector Group", list(SECTORS.keys()))
+    selected_sector = st.sidebar.selectbox("Select Universe / Sector Group", list(US_SECTORS.keys()))
     top_n = st.sidebar.slider("Show Top N Stocks", min_value=5, max_value=30, value=10)
 
     if st.button("🚀 Run Analysis", type="primary"):
@@ -244,7 +246,37 @@ elif selected_script == "M stock Analyser":
             progress_bar.progress(pct)
             status_text.text(f"[{completed}/{total}] {text}...")
 
-        df = run_analysis(sector=selected_sector, top_n=top_n, progress_callback=update_streamlit_progress)
+        df = US_run_analysis(sector=selected_sector, top_n=top_n, progress_callback=update_streamlit_progress)
+
+        progress_bar.empty()
+        status_text.empty()
+
+        if not df.empty:
+            st.success(f"Analysis complete! Top {len(df)} stocks analyzed.")
+            st.dataframe(df[["Ticker", "Name", "Sector", "Price", "PE", "PEG", "Rev_Pct", "Margin_Pct", "Total_Score", "RSI", "RVOL", "IV%"]], use_container_width=True)
+            st.subheader("📊 Quant Scores Breakdown")
+            st.bar_chart(df.set_index("Ticker")["Total_Score"])
+        else:
+            st.error("No valid stock data could be retrieved. Try again later.")
+
+# --- SCRIPT 6: M India stock Analyser ---
+elif selected_script == "M India stock Analyser":
+    st.subheader("📈 India Stock Quantitative Analyzer")
+    st.markdown("Scores stocks via Sector-Normalized Z-Scores with real-time technical tracking.")
+
+    selected_sector = st.sidebar.selectbox("Select Universe / Sector Group", list(INDIA_SECTORS.keys()))
+    top_n = st.sidebar.slider("Show Top N Stocks", min_value=5, max_value=30, value=10)
+
+    if st.button("🚀 Run Analysis", type="primary"):
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        def update_streamlit_progress(completed, total, text):
+            pct = completed / total
+            progress_bar.progress(pct)
+            status_text.text(f"[{completed}/{total}] {text}...")
+
+        df = India_run_analysis(sector=selected_sector, top_n=top_n, progress_callback=update_streamlit_progress)
 
         progress_bar.empty()
         status_text.empty()
