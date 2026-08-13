@@ -313,7 +313,7 @@ def India_run_analysis(tickers=None, sector="all", top_n=10, progress_callback=N
     completed = 0
     total = len(tickers)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         future_to_ticker = {executor.submit(fetch_raw_data, t): t for t in tickers}
         for future in concurrent.futures.as_completed(future_to_ticker):
             completed += 1
@@ -341,7 +341,7 @@ def India_run_analysis(tickers=None, sector="all", top_n=10, progress_callback=N
     tech_data = []
     top_tickers = df["Ticker"].tolist()
     
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(10, len(top_tickers))) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(5, len(top_tickers))) as executor:
         future_to_tech = {executor.submit(fetch_technicals, t): t for t in top_tickers}
         for future in concurrent.futures.as_completed(future_to_tech):
             try:
