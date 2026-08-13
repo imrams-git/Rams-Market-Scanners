@@ -20,7 +20,7 @@ try:
     from colorama import Fore, Style, init
     init(autoreset=True)
 except ImportError:
-    print("Missing dependencies.勸n  pip install yfinance pandas numpy tabulate colorama")
+    print("Missing dependencies. Run:\n  pip install yfinance pandas numpy tabulate colorama streamlit")
     sys.exit(1)
 
 # ─────────────────────────────────────────────
@@ -137,11 +137,11 @@ INDIAN_STOCKS = {
     ]
 }
 
-INDIA_SECTORS = {sector_name: tickers for sector_name, tickers in INDIAN_STOCKS.items()}
-INDIA_SECTORS["all"] = list({t for tickers in INDIA_SECTORS.values() for t in tickers})
+INDIAN_SECTORS = {sector_name: tickers for sector_name, tickers in INDIAN_STOCKS.items()}
+INDIAN_SECTORS["all"] = list({t for tickers in INDIAN_SECTORS.values() for t in tickers})
 
 TICKER_TO_SECTOR = {}
-for sec_name, tickers in INDIA_SECTORS.items():
+for sec_name, tickers in INDIAN_SECTORS.items():
     if sec_name != "all":
         for t in tickers:
             TICKER_TO_SECTOR[t.upper()] = sec_name
@@ -156,6 +156,10 @@ WEIGHTS = {
     "momentum_score":    0.15,  
     "analyst_score":     0.05,  
 }
+
+# ─────────────────────────────────────────────
+#  HELPERS
+# ─────────────────────────────────────────────
 
 def safe(val, default=np.nan):
     if val is None:
@@ -293,9 +297,17 @@ def fetch_technicals(ticker_clean: str) -> dict:
     except Exception:
         return {"Ticker": ticker_clean, "RSI": np.nan, "RVOL": np.nan, "IV%": np.nan}
 
-def India_run_analysis(tickers=None, sector="all", top_n=10):
+# ─────────────────────────────────────────────
+#  MODULAR FUNCTION FOR STREAMLIT / TERMINAL
+# ─────────────────────────────────────────────
+
+def India_run_analysis(tickers=None, sector="stocks", top_n=10, progress_callback=None):
+    """
+    Core function that handles fetching and calculations. 
+    Can be called from app.py or main().
+    """
     if not tickers:
-        tickers = INDIA_SECTORS.get(sector, INDIA_SECTORS["all"])
+        tickers = INDIAN_SECTORS.get(sector, INDIAN_SECTORS["all"])
 
     raw_data = []
     completed = 0
@@ -305,7 +317,14 @@ def India_run_analysis(tickers=None, sector="all", top_n=10):
         future_to_ticker = {executor.submit(fetch_raw_data, t): t for t in tickers}
         for future in concurrent.futures.as_completed(future_to_ticker):
             completed += 1
-            print(f"  [{completed:03d}/{total:03d}] Fetching...", end="\r")
+            ticker = future_to_ticker[future]
+                        
+            # Update progress callback if given (useful for Streamlit progress bars)
+            if progress_callback:
+                progress_callback(completed, total, f"Processed {completed}/{total}")
+            elif completed % 50 == 0 or completed == total:
+                print(f"  [Progress] Processed {completed} / {total} stocks...")            
+            
             try:
                 result = future.result()
                 if result: raw_data.append(result)
@@ -341,10 +360,14 @@ def India_run_analysis(tickers=None, sector="all", top_n=10):
 
     return df
 
+# ─────────────────────────────────────────────
+#  MAIN (Terminal Execution)
+# ─────────────────────────────────────────────
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Indian Stock Quantitative Analyzer")
-    parser.add_argument("--sector", default="all", choices=list(INDIA_SECTORS.keys()))
+    parser.add_argument("--sector", default="all", choices=list(INDIAN_SECTORS.keys()))
     parser.add_argument("--top", type=int, default=10, help="Show top N stocks")
     args = parser.parse_args()
 
@@ -383,13 +406,14 @@ def main():
         bar_len = int(score / 5)
         bar = "█" * bar_len + "░" * (20 - bar_len)
         
+        # Simple signal text mapping for terminal print
         sig_text = "PASS"
         if score >= 65: sig_text = f"{Fore.GREEN}★ STRONG BUY{Style.RESET_ALL}"
         elif score >= 55: sig_text = f"{Fore.CYAN}▲ BUY{Style.RESET_ALL}"
         elif score >= 45: sig_text = f"{Fore.YELLOW}● HOLD{Style.RESET_ALL}"
         else: sig_text = f"{Fore.RED}▼ PASS{Style.RESET_ALL}"
 
-        print(f"  {row['Ticker']:<6} {bar}  {score:>5.1f}  {sig_text}")
+        print(f"  {row['Ticker']:<15} {bar}  {score:>5.1f}  {sig_text}")
 
 if __name__ == "__main__":
     main()
