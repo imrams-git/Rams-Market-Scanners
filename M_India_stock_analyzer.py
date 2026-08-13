@@ -137,11 +137,11 @@ INDIAN_STOCKS = {
     ]
 }
 
-SECTORS = {sector_name: tickers for sector_name, tickers in INDIAN_STOCKS.items()}
-SECTORS["all"] = list({t for tickers in SECTORS.values() for t in tickers})
+INDIA_SECTORS = {sector_name: tickers for sector_name, tickers in INDIAN_STOCKS.items()}
+INDIA_SECTORS["all"] = list({t for tickers in INDIA_SECTORS.values() for t in tickers})
 
 TICKER_TO_SECTOR = {}
-for sec_name, tickers in SECTORS.items():
+for sec_name, tickers in INDIA_SECTORS.items():
     if sec_name != "all":
         for t in tickers:
             TICKER_TO_SECTOR[t.upper()] = sec_name
@@ -293,9 +293,9 @@ def fetch_technicals(ticker_clean: str) -> dict:
     except Exception:
         return {"Ticker": ticker_clean, "RSI": np.nan, "RVOL": np.nan, "IV%": np.nan}
 
-def run_analysis(tickers=None, sector="all", top_n=10):
+def India_run_analysis(tickers=None, sector="all", top_n=10):
     if not tickers:
-        tickers = SECTORS.get(sector, SECTORS["all"])
+        tickers = INDIA_SECTORS.get(sector, INDIA_SECTORS["all"])
 
     raw_data = []
     completed = 0
@@ -344,7 +344,7 @@ def run_analysis(tickers=None, sector="all", top_n=10):
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Indian Stock Quantitative Analyzer")
-    parser.add_argument("--sector", default="all", choices=list(SECTORS.keys()))
+    parser.add_argument("--sector", default="all", choices=list(INDIA_SECTORS.keys()))
     parser.add_argument("--top", type=int, default=10, help="Show top N stocks")
     args = parser.parse_args()
 
@@ -353,7 +353,7 @@ def main():
     print(f"{'═'*80}{Style.RESET_ALL}")
     print(f"  Fetching NSE data via threading...\n")
 
-    df = run_analysis(sector=args.sector, top_n=args.top)
+    df = India_run_analysis(sector=args.sector, top_n=args.top)
 
     if df.empty:
         print(f"{Fore.RED}No data retrieved.{Style.RESET_ALL}")
