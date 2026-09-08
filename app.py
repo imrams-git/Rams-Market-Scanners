@@ -256,7 +256,7 @@ if selected_script == "India SMA200 And Matching":
     
     if st.button("Execute SMA200 Volume Scan", type="primary"):
         with st.spinner("Processing SMA200 and volume imbalances..."):
-            india_matching = importlib.import_module("Sl_India_SMA_matching") 
+            india_matching = importlib.import_module("Sl_India_SMA200_matching") 
             checker = india_matching.VolumeAlertChecker()
             result_df = checker.run(INDIA_SYMBOLS, n_bars=n_bars)
             
@@ -273,7 +273,7 @@ if selected_script == "US SMA200 And Matching":
     
     if st.button("Execute SMA200 Volume Scan", type="primary"):
         with st.spinner("Processing SMA200 and volume imbalances..."):
-            india_matching = importlib.import_module("Sl_US_SMA_matching") 
+            india_matching = importlib.import_module("Sl_US_SMA200_matching") 
             checker = india_matching.VolumeAlertChecker()
             result_df = checker.run(INDIA_SYMBOLS, n_bars=n_bars)
             
