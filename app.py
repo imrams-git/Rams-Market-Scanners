@@ -1,5 +1,7 @@
 import streamlit as st
 import importlib
+import importlib.util
+import os
 import pandas as pd
 
 # 1. Page Configuration (Called ONCE at the absolute top)
@@ -9,16 +11,19 @@ st.set_page_config(page_title="Trading Algorithm Dashboard", layout="wide")
 st.sidebar.header("Select Strategy")
 selected_script = st.sidebar.selectbox(
     "Choose an analysis tool:",
-    ["India Volume Matching", 
-     "US Volume Matching", 
-     "India SMA200",
-     "US SMA200",
-     "India SMA200 And Matching",
-     "US SMA200 And Matching",
-	 "India High-Prob EMA Breakout",
-     "US High-Prob EMA Breakout",
-     "M US stock Analyser",
-     "M India stock Analyser"])
+    [
+        "India Volume Matching", 
+        "US Volume Matching", 
+        "India DIY Coiled & Breakout Screener",
+        "US DIY Coiled & Breakout Screener",
+        "India SMA200 And Matching",
+        "US SMA200 And Matching",
+        "India High-Prob EMA Breakout",
+        "US High-Prob EMA Breakout",
+        "M US stock Analyser",
+        "M India stock Analyser",
+    ]
+)
 
 st.sidebar.markdown("---")
 st.sidebar.info(f"Active Script Configuration: **{selected_script}**")
@@ -172,6 +177,15 @@ INDIA_SYMBOLS = [
         'BAJAJHLDNG.NS'
 ]
 
+# Helper to import files with numeric or special names dynamically
+def load_module_from_file(module_name: str, file_name: str):
+    if os.path.exists(file_name):
+        spec = importlib.util.spec_from_file_location(module_name, file_name)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    return None
+
 # ==========================================
 # ROUTING LOGIC BASED ON USER SELECTION
 # ==========================================
@@ -210,53 +224,183 @@ elif selected_script == "US Volume Matching":
             else:
                 st.warning("No levels matched current parameters.")
 
-# --- SCRIPT 3: INDIA SMA200 ---
-elif selected_script == "India SMA200":
-    st.subheader("📈 India Stocks bouncing from SMA200 Scanner")
-    st.markdown("Scans for stocks reversing after touching 200 SMA levels on daily timeframes.")
-    
-    if st.button("Execute SMA 200", type="primary"):
-        with st.spinner("Processing SMA 200 scan..."):
-            india_sma200 = importlib.import_module("Sl_India_SMA200")
-            matches = india_sma200.scan_stocks()
-            
-            result_df = pd.DataFrame(matches) if matches else pd.DataFrame()
-            
-            if not result_df.empty:
-                st.success("Scan Complete!")
-                result_df = result_df.sort_values(by="%diff", ascending=True)
-                st.dataframe(result_df, hide_index=True, use_container_width=True)
-            else:
-                st.warning("0 results matched current technical parameters.")
+# --- SCRIPT 3: India DIY COILED & BREAKOUT SCREENER ---
+elif selected_script == "India DIY Coiled & Breakout Screener":
+    st.subheader("India Coiled & Bollinger Band Breakout (BBB) Screener")
+    st.markdown("Filters for **Coiled** consolidation (BB inside Keltner Channels) with **≥20 Technical Confirmations** and flags active **Bollinger Band Breakouts (BBB)**.")
 
-# --- SCRIPT 4: US SMA200 ---
-elif selected_script == "US SMA200":
-    st.subheader("📈 US Stocks bouncing from SMA200 Scanner")
-    st.markdown("Scans for stocks reversing after touching 200 SMA levels on daily timeframes.")
-    
-    if st.button("Execute SMA 200", type="primary"):
-        with st.spinner("Processing SMA 200 scan..."):
-            us_sma200 = importlib.import_module("Sl_US_SMA200")
-            matches = us_sma200.scan_stocks()
-            
-            result_df = pd.DataFrame(matches) if matches else pd.DataFrame()
-            
-            if not result_df.empty:
-                st.success("Scan Complete!")
-                result_df = result_df.sort_values(by="%diff", ascending=True)
-                st.dataframe(result_df, hide_index=True, use_container_width=True)
-            else:
-                st.warning("0 results matched current technical parameters.")
+    india_diy_mod = load_module_from_file("diy_screener", "Sl_India_DIY.py")
+    if diy_mod is None:
+        try:
+            india_diy_mod = importlib.import_module("Sl_India_DIY")
+        except Exception:
+            india_diy_mod = None
+
+    if india_diy_mod is None:
+        st.error("⚠️ Could not load `8_US_DIY.py`. Please make sure the file exists in the current working directory.")
+    else:
+        with st.sidebar:
+            st.markdown("---")
+            st.header("⚙️ DIY Screener Settings")
+            min_sigs = st.slider("Minimum Buy/Sell Confirmations:", min_value=1, max_value=30, value=20)
+
+        initial_stocks = ", ".join(diy_mod.US_STOCKS)
+        stock_input = st.text_area("Stocks to Scan (comma separated):", initial_stocks, height=140)
+
+        if st.button("🚀 Run Coiled & BBB Screener", type="primary", use_container_width=True):
+            tickers = [t.strip().upper() for t in stock_input.split(",") if t.strip()]
+            progress_bar = st.progress(0.0)
+            status_text = st.empty()
+
+            def update_ui(current, total):
+                progress_bar.progress(current / total)
+                status_text.text(f"Scanning {current}/{total} US stocks...")
+
+            with st.spinner("Processing technical indicators and squeeze breakouts..."):
+                buys_list, sells_list = india_diy_mod.run_screener(tickers, min_signals=min_sigs, progress_callback=update_ui)
+                status_text.empty()
+                progress_bar.empty()
+
+            combined_csv = india_diy_mod.save_results_to_csv(buys_list, sells_list)
+            if combined_csv:
+                st.info(f"✅ Results automatically saved to `{combined_csv}`")
+
+            def style_buy_row(row):
+                count = int(row['Buy Signals'].split(' / ')[0])
+                color = 'background-color: rgba(0, 255, 0, 0.2); color: #00FF00' if count >= 20 else ''
+                return [color] * len(row)
+
+            def style_sell_row(row):
+                count = int(row['Sell Signals'].split(' / ')[0])
+                color = 'background-color: rgba(255, 0, 0, 0.2); color: #FF0000' if count >= 20 else ''
+                return [color] * len(row)
+
+            c1, c2 = st.columns(2)
+            with c1:
+                st.subheader("🟢 BUY Candidates (Coiled)")
+                if buys_list:
+                    df_b = pd.DataFrame([{
+                        'Stock': i['Clean Ticker'],
+                        'CMP ($)': i['Price ($)'],
+                        'BBB': i.get('BBB', 'N'),
+                        'Buy Signals': f"{i['Buy Signals']} / {i['Total Indicators']}",
+                        'RSI(1H)': i['RSI (1H)'],
+                        'RSI(D)': i['RSI (Daily)'],
+                        'RSI(W)': i['RSI (Weekly)']
+                    } for i in buys_list])
+                    st.dataframe(df_b.style.apply(style_buy_row, axis=1), use_container_width=True)
+                else:
+                    st.warning(f"No coiled stocks with ≥ {min_sigs} Buy signals.")
+
+            with c2:
+                st.subheader("🔴 SELL Candidates (Coiled)")
+                if sells_list:
+                    df_s = pd.DataFrame([{
+                        'Stock': i['Clean Ticker'],
+                        'CMP ($)': i['Price ($)'],
+                        'BBB': i.get('BBB', 'N'),
+                        'Sell Signals': f"{i['Sell Signals']} / {i['Total Indicators']}",
+                        'RSI(1H)': i['RSI (1H)'],
+                        'RSI(D)': i['RSI (Daily)'],
+                        'RSI(W)': i['RSI (Weekly)']
+                    } for i in sells_list])
+                    st.dataframe(df_s.style.apply(style_sell_row, axis=1), use_container_width=True)
+                else:
+                    st.warning(f"No coiled stocks with ≥ {min_sigs} Sell signals.")
+
+# --- SCRIPT 4: US DIY COILED & BREAKOUT SCREENER ---
+elif selected_script == "US DIY Coiled & Breakout Screener":
+    st.subheader("🇺🇸 US Coiled & Bollinger Band Breakout (BBB) Screener")
+    st.markdown("Filters for **Coiled** consolidation (BB inside Keltner Channels) with **≥20 Technical Confirmations** and flags active **Bollinger Band Breakouts (BBB)**.")
+
+    diy_mod = load_module_from_file("diy_screener", "Sl_US_DIY.py")
+    if diy_mod is None:
+        try:
+            diy_mod = importlib.import_module("Sl_US_DIY")
+        except Exception:
+            diy_mod = None
+
+    if diy_mod is None:
+        st.error("⚠️ Could not load `8_US_DIY.py`. Please make sure the file exists in the current working directory.")
+    else:
+        with st.sidebar:
+            st.markdown("---")
+            st.header("⚙️ DIY Screener Settings")
+            min_sigs = st.slider("Minimum Buy/Sell Confirmations:", min_value=1, max_value=30, value=20)
+
+        initial_stocks = ", ".join(diy_mod.US_STOCKS)
+        stock_input = st.text_area("Stocks to Scan (comma separated):", initial_stocks, height=140)
+
+        if st.button("🚀 Run Coiled & BBB Screener", type="primary", use_container_width=True):
+            tickers = [t.strip().upper() for t in stock_input.split(",") if t.strip()]
+            progress_bar = st.progress(0.0)
+            status_text = st.empty()
+
+            def update_ui(current, total):
+                progress_bar.progress(current / total)
+                status_text.text(f"Scanning {current}/{total} US stocks...")
+
+            with st.spinner("Processing technical indicators and squeeze breakouts..."):
+                buys_list, sells_list = diy_mod.run_screener(tickers, min_signals=min_sigs, progress_callback=update_ui)
+                status_text.empty()
+                progress_bar.empty()
+
+            combined_csv = diy_mod.save_results_to_csv(buys_list, sells_list)
+            if combined_csv:
+                st.info(f"✅ Results automatically saved to `{combined_csv}`")
+
+            def style_buy_row(row):
+                count = int(row['Buy Signals'].split(' / ')[0])
+                color = 'background-color: rgba(0, 255, 0, 0.2); color: #00FF00' if count >= 20 else ''
+                return [color] * len(row)
+
+            def style_sell_row(row):
+                count = int(row['Sell Signals'].split(' / ')[0])
+                color = 'background-color: rgba(255, 0, 0, 0.2); color: #FF0000' if count >= 20 else ''
+                return [color] * len(row)
+
+            c1, c2 = st.columns(2)
+            with c1:
+                st.subheader("🟢 BUY Candidates (Coiled)")
+                if buys_list:
+                    df_b = pd.DataFrame([{
+                        'Stock': i['Clean Ticker'],
+                        'CMP ($)': i['Price ($)'],
+                        'BBB': i.get('BBB', 'N'),
+                        'Buy Signals': f"{i['Buy Signals']} / {i['Total Indicators']}",
+                        'RSI(1H)': i['RSI (1H)'],
+                        'RSI(D)': i['RSI (Daily)'],
+                        'RSI(W)': i['RSI (Weekly)']
+                    } for i in buys_list])
+                    st.dataframe(df_b.style.apply(style_buy_row, axis=1), use_container_width=True)
+                else:
+                    st.warning(f"No coiled stocks with ≥ {min_sigs} Buy signals.")
+
+            with c2:
+                st.subheader("🔴 SELL Candidates (Coiled)")
+                if sells_list:
+                    df_s = pd.DataFrame([{
+                        'Stock': i['Clean Ticker'],
+                        'CMP ($)': i['Price ($)'],
+                        'BBB': i.get('BBB', 'N'),
+                        'Sell Signals': f"{i['Sell Signals']} / {i['Total Indicators']}",
+                        'RSI(1H)': i['RSI (1H)'],
+                        'RSI(D)': i['RSI (Daily)'],
+                        'RSI(W)': i['RSI (Weekly)']
+                    } for i in sells_list])
+                    st.dataframe(df_s.style.apply(style_sell_row, axis=1), use_container_width=True)
+                else:
+                    st.warning(f"No coiled stocks with ≥ {min_sigs} Sell signals.")
 
 # --- SCRIPT 5: INDIA SMA200 And MATCHING ---
-if selected_script == "India SMA200 And Matching":
+elif selected_script == "India SMA200 And Matching":
     st.subheader("📈 Stocks bouncing off SMA200 with Volume Scanner (India)")
     st.markdown("Scans for stocks bouncing off 200 SMA and having volume momentum candles and checks if support/resistance levels remain unbroken.")
     n_bars = st.slider("Lookback Bars", min_value=20, max_value=200, value=100)
     
     if st.button("Execute SMA200 Volume Scan", type="primary"):
         with st.spinner("Processing SMA200 and volume imbalances..."):
-            india_matching = importlib.import_module("Sl_India_SMA200_matching") 
+            india_matching = importlib.import_module("Sl_India_SMA_matching") 
             checker = india_matching.VolumeAlertChecker()
             result_df = checker.run(INDIA_SYMBOLS, n_bars=n_bars)
             
@@ -266,22 +410,21 @@ if selected_script == "India SMA200 And Matching":
                 st.warning("No levels matched current parameters.")
 
 # --- SCRIPT 6: US SMA200 And MATCHING ---
-if selected_script == "US SMA200 And Matching":
-    st.subheader("📈 Stocks bouncing off SMA200 with Volume Scanner (India)")
+elif selected_script == "US SMA200 And Matching":
+    st.subheader("📈 Stocks bouncing off SMA200 with Volume Scanner (US)")
     st.markdown("Scans for stocks bouncing off 200 SMA and having volume momentum candles and checks if support/resistance levels remain unbroken.")
     n_bars = st.slider("Lookback Bars", min_value=20, max_value=200, value=100)
     
     if st.button("Execute SMA200 Volume Scan", type="primary"):
         with st.spinner("Processing SMA200 and volume imbalances..."):
-            india_matching = importlib.import_module("Sl_US_SMA200_matching") 
-            checker = india_matching.VolumeAlertChecker()
-            result_df = checker.run(INDIA_SYMBOLS, n_bars=n_bars)
+            us_matching = importlib.import_module("Sl_US_SMA_matching") 
+            checker = us_matching.VolumeAlertChecker()
+            result_df = checker.run(US_SYMBOLS, n_bars=n_bars)
             
             if result_df is not None and not result_df.empty:
                 st.success("Scan Complete!")
             else:
                 st.warning("No levels matched current parameters.")
-
 
 # --- SCRIPT 7: INDIA EMA BREAKOUT ---
 elif selected_script == "India High-Prob EMA Breakout":
@@ -300,7 +443,6 @@ elif selected_script == "India High-Prob EMA Breakout":
             else:
                 st.warning("No stocks currently match the strict breakout criteria.")
 
-
 # --- SCRIPT 8: US EMA BREAKOUT ---
 elif selected_script == "US High-Prob EMA Breakout":
     st.subheader("📈 High-Probability Breakout Screener (US)")
@@ -318,8 +460,7 @@ elif selected_script == "US High-Prob EMA Breakout":
             else:
                 st.warning("No stocks currently match the strict breakout criteria.")
 
-
-# --- SCRIPT 7: M US stock Analyser ---
+# --- SCRIPT 9: M US stock Analyser ---
 elif selected_script == "M US stock Analyser":
     st.subheader("📈 US Stock Quantitative Analyzer")
     st.markdown("Scores stocks via Sector-Normalized Z-Scores with real-time technical tracking.")
@@ -350,7 +491,7 @@ elif selected_script == "M US stock Analyser":
         else:
             st.error("No valid stock data could be retrieved. Try again later.")
 
-# --- SCRIPT 6: M India stock Analyser ---
+# --- SCRIPT 10: M India stock Analyser ---
 elif selected_script == "M India stock Analyser":
     st.subheader("📈 India Stock Quantitative Analyzer")
     st.markdown("Scores stocks via Sector-Normalized Z-Scores with real-time technical tracking.")
@@ -380,3 +521,4 @@ elif selected_script == "M India stock Analyser":
             st.bar_chart(df.set_index("Ticker")["Total_Score"])
         else:
             st.error("No valid stock data could be retrieved. Try again later.")
+
