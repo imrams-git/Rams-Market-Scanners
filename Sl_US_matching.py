@@ -128,6 +128,15 @@ WHAT CHANGED FROM THE PREVIOUS VERSION
     fetched, so the three extra columns cost no additional requests; it covers
     roughly the last year (about 50 weekly bars). `Is_Coiled` is printed as
     Y/N rather than True/False.
+
+16. A DATA OUTAGE MUST NOT EMPTY THE LIST.  Yahoo's fundamentals endpoint
+    (quoteSummary) refuses requests from shared cloud IPs such as Streamlit
+    Community Cloud, so PE, sector and earnings dates can all come back empty.
+    The PE gate used to reject every row in that case and the UI just said
+    "none passed the quality gates". Now the PE and earnings gates are only
+    applied when those columns actually carry data (>=50% coverage), MAX_PE=0
+    disables the PE gate outright, and every degradation is reported as a
+    warning in the terminal, the browser UI and the AI packet.
 """
 
 import yfinance as yf
@@ -371,6 +380,7 @@ class VolumeAlertChecker:
         self._last_error = None
         self._funnel = Counter()
         self._rsi_cache = {}
+        self._run_notes = []
         self._hourly_frame = None
         self.last_run = {}
         # None = unknown, True = Yahoo serves 4h, False = derive it from 30m.
@@ -889,11 +899,19 @@ class VolumeAlertChecker:
 
         if unique_symbols:
             print(f"\nFetching Fundamental Data for {len(unique_symbols)} matched symbols...")
+            time.sleep(2.0)      # let a throttled IP cool before the quoteSummary burst
             with ThreadPoolExecutor(max_workers=self.fundamentals_workers) as pool:
                 results = list(pool.map(self._fundamentals_one, unique_symbols))
             fund_data = dict(zip(unique_symbols, results))
             resolved = sum(1 for v in fund_data.values() if v.get("PE") != "N/A")
             print(f"  PE resolved for {resolved}/{len(unique_symbols)} symbols")
+            if resolved == 0:
+                note = ("Fundamentals came back empty for every symbol. Yahoo's "
+                        "quoteSummary endpoint refuses these requests on shared cloud "
+                        "IPs, so PE and the earnings window are unknown. The PE gate "
+                        "is skipped rather than emptying the list.")
+                print("  !! " + note)
+                self._run_notes.append(note)
 
         df = df.copy()
         df['PE'] = df['Symbol'].map(lambda x: fund_data.get(x, {}).get('PE', 'N/A'))
@@ -981,6 +999,7 @@ class VolumeAlertChecker:
         self._missing = {tf: [] for tf in self.timeframes}
         self._last_error = None
         self._funnel = Counter()
+        self._run_notes = []
         self.native_4h = None if self._allow_native_4h else False
         self._requests_made = 0
         self._cache_hits = 0
@@ -1165,7 +1184,9 @@ class VolumeAlertChecker:
                              "coverage": {tf: f"0/{len(valid_symbols)}"
                                           for tf in self.timeframes},
                              "requests": self._requests_made,
-                             "cache_hits": self._cache_hits, "funnel": dict(self._funnel)}
+                             "cache_hits": self._cache_hits,
+                             "funnel": dict(self._funnel),
+                             "notes": list(self._run_notes)}
             if packet:
                 print(f"AI packet written: {packet}")
             return empty
@@ -1202,6 +1223,8 @@ class VolumeAlertChecker:
         self.print_ranked(longs, "LONG SETUPS  (ImbHigh, one row per symbol)", GREEN)
         self.print_ranked(shorts, "SHORT SETUPS  (ImbLow, one row per symbol)", RED)
         self.print_exclusions(exclusions, len(df), len(longs) + len(shorts))
+        for note in self._run_notes:
+            print(f"  !! {note}")
         self.print_tier_summary(annotated)
         print(f"\nResults saved to {filepath}")
 
@@ -1217,7 +1240,7 @@ class VolumeAlertChecker:
             "coverage": {tf: f"{self._scanned.get(tf, 0)}/{len(valid_symbols)}"
                          for tf in self.timeframes},
             "requests": self._requests_made, "cache_hits": self._cache_hits,
-            "funnel": dict(self._funnel),
+            "funnel": dict(self._funnel), "notes": list(self._run_notes),
         }
         if packet:
             print(f"\nAI packet written: {packet}")
@@ -1366,6 +1389,26 @@ class VolumeAlertChecker:
             return df, df, df, reasons
 
         d = df.copy()
+
+        # A data outage must not silently empty the list: only gate on PE and the
+        # earnings window when those columns actually carry data.
+        pe_vals = (pd.to_numeric(d["PE"], errors="coerce")
+                   if "PE" in d.columns else pd.Series(dtype=float, index=d.index))
+        pe_cov = float(pe_vals.notna().mean()) if len(d) else 0.0
+        pe_gate = self.max_pe > 0 and pe_cov >= 0.5
+        if self.max_pe > 0 and not pe_gate and len(d):
+            self._run_notes.append(
+                f"PE available for only {pe_cov:.0%} of rows - the PE gate was skipped "
+                f"for this run (MAX_PE=0 disables it permanently).")
+
+        earn_vals = (pd.to_numeric(d["Days2Earn"], errors="coerce")
+                     if "Days2Earn" in d.columns else pd.Series(dtype=float, index=d.index))
+        earn_cov = float(earn_vals.notna().mean()) if len(d) else 0.0
+        if earn_cov < 0.5 and len(d):
+            self._run_notes.append(
+                f"Earnings dates available for only {earn_cov:.0%} of rows - the "
+                f"earnings blackout was not enforced for this run.")
+
         conf = d.groupby(["Symbol", "Imb"])["TF"].nunique().to_dict()
         d["Confl"] = [conf.get((sym, imb), 1) for sym, imb in zip(d["Symbol"], d["Imb"])]
         d["Pct50"] = [round((self._daily_cache.get(sym) or {}).get("pct_50dma", np.nan), 1)
@@ -1389,7 +1432,7 @@ class VolumeAlertChecker:
                 reason = f"price below ${self.min_price:g}"
             elif not np.isfinite(adv) or adv < self.min_dollar_vol:
                 reason = "20d dollar volume too thin"
-            elif not np.isfinite(pe) or pe <= 0 or pe > self.max_pe:
+            elif pe_gate and not (np.isfinite(pe) and 0 < pe <= self.max_pe):
                 reason = f"PE missing or above {self.max_pe:g}"
             elif np.isfinite(days) and 0 <= days <= self.min_days_to_earnings:
                 reason = f"earnings within {self.min_days_to_earnings:g} days"
@@ -1511,6 +1554,14 @@ def _render_app(checker, symbols):
     n_long = 0 if longs is None else len(longs)
     n_short = 0 if shorts is None else len(shorts)
     st.success(f"{n_long} long setups, {n_short} short setups after the quality gates.")
+    for note in (scan.get("notes") or []):
+        st.warning(note)
+
+    exclusions = scan.get("exclusions") or {}
+    if n_long == 0 and n_short == 0 and exclusions:
+        top = ", ".join(f"{k} ({v})" for k, v in
+                        sorted(exclusions.items(), key=lambda kv: -kv[1])[:3])
+        st.warning(f"Nothing survived the quality gates. Main reasons: {top}")
 
     st.subheader("Long setups")
     if n_long:
@@ -1540,7 +1591,6 @@ def _render_app(checker, symbols):
             mime="text/csv", disabled=not csv_text)
         st.caption("Every row, including what was excluded and why.")
 
-    exclusions = scan.get("exclusions") or {}
     if exclusions:
         with st.expander("Rows removed by the quality gates"):
             for reason, n in sorted(exclusions.items(), key=lambda kv: -kv[1]):
