@@ -14,6 +14,7 @@ selected_script = st.sidebar.selectbox(
     [
         "India Volume Matching", 
         "US Volume Matching", 
+        "NIFTY / BANKNIFTY Intraday",
         "India DIY Coiled & Breakout Screener",
         "US DIY Coiled & Breakout Screener",
         "India SMA200 And Matching",
@@ -522,3 +523,15 @@ elif selected_script == "M India stock Analyser":
         else:
             st.error("No valid stock data could be retrieved. Try again later.")
 
+# --- SCRIPT 11: NIFTY / BANK NIFTY INTRADAY CHECKLIST ---
+elif selected_script == "NIFTY / BANKNIFTY Intraday":
+    try:
+        importlib.invalidate_caches()
+        nbnf_mod = importlib.import_module("Sl_India_NiftyBNF")
+    except Exception:
+        nbnf_mod = load_module_from_file("Sl_India_NiftyBNF", "Sl_India_NiftyBNF.py")
+
+    if nbnf_mod is None:
+        st.error("⚠️ Could not load `Sl_India_NiftyBNF.py`. Please make sure the file exists in the current working directory.")
+    else:
+        nbnf_mod.render()
