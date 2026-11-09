@@ -187,6 +187,67 @@ def load_module_from_file(module_name: str, file_name: str):
         return mod
     return None
 
+# Renders a completed VolumeAlertChecker run (tables, downloads, packet preview)
+def render_volume_scan(scan):
+    longs = scan.get("longs")
+    shorts = scan.get("shorts")
+    n_long = 0 if longs is None else len(longs)
+    n_short = 0 if shorts is None else len(shorts)
+
+    coverage = scan.get("coverage") or {}
+    stats = [f"{n_long} long", f"{n_short} short"]
+    if coverage:
+        stats.append("coverage " + ", ".join(f"{k} {v}" for k, v in coverage.items()))
+    if scan.get("requests") is not None:
+        stats.append(f"{scan['requests']} requests")
+    st.caption(" | ".join(stats))
+
+    st.subheader("Long setups")
+    if n_long:
+        st.dataframe(longs, hide_index=True, use_container_width=True)
+    else:
+        st.write("None passed the quality gates.")
+
+    st.subheader("Short setups")
+    if n_short:
+        st.dataframe(shorts, hide_index=True, use_container_width=True)
+    else:
+        st.write("None passed the quality gates.")
+
+    def read(path):
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                return fh.read()
+        except (OSError, TypeError):
+            return ""
+
+    packet_text = read(scan.get("packet"))
+    csv_text = read(scan.get("csv"))
+    c1, c2 = st.columns(2)
+    with c1:
+        st.download_button("Download AI packet (.md)", packet_text or "no packet",
+                           file_name=os.path.basename(scan.get("packet") or "AI_PACKET.md"),
+                           mime="text/markdown", disabled=not packet_text,
+                           key="us_packet_dl")
+        st.caption("Attach this file to the chat for the top-5 pick.")
+    with c2:
+        st.download_button("Download full results (.csv)", csv_text or "no csv",
+                           file_name=os.path.basename(scan.get("csv") or "US_Matching.csv"),
+                           mime="text/csv", disabled=not csv_text,
+                           key="us_csv_dl")
+        st.caption("Every row, including what was excluded and why.")
+
+    exclusions = scan.get("exclusions") or {}
+    if exclusions:
+        with st.expander("Rows removed by the quality gates"):
+            for reason, n in sorted(exclusions.items(), key=lambda kv: -kv[1]):
+                st.write(f"{n} - {reason}")
+
+    if packet_text:
+        with st.expander("Preview the AI packet"):
+            st.markdown(packet_text)
+
+
 # ==========================================
 # ROUTING LOGIC BASED ON USER SELECTION
 # ==========================================
@@ -212,18 +273,35 @@ if selected_script == "India Volume Matching":
 elif selected_script == "US Volume Matching":
     st.subheader("📈 Institutional Volume Magnetism Scanner (US)")
     st.markdown("Scans for high-volume momentum candles and checks if support/resistance levels remain unbroken.")
-    n_bars = st.slider("Lookback Bars", min_value=20, max_value=200, value=100)
-    
-    if st.button("Execute Volume Scan", type="primary"):
-        with st.spinner("Processing volume imbalances..."):
-            us_matching = importlib.import_module("Sl_US_matching")
+
+    us_matching = None
+    try:
+        us_matching = importlib.import_module("Sl_US_matching")
+    except Exception:
+        us_matching = load_module_from_file("Sl_US_matching", "Sl_US_matching.py")
+
+    if us_matching is None:
+        st.error("⚠️ Could not load `Sl_US_matching.py`. Save `2_US_matching.py` as "
+                 "`Sl_US_matching.py` in this folder.")
+    else:
+        n_bars = st.slider("Lookback Bars", min_value=20, max_value=200, value=100)
+
+        if st.button("Execute Volume Scan", type="primary"):
             checker = us_matching.VolumeAlertChecker()
-            result_df = checker.run(US_SYMBOLS, n_bars=n_bars)
-            
-            if result_df is not None and not result_df.empty:
-                st.success("Scan Complete!")
-            else:
+            with st.spinner("Scanning... a cold cache takes a few minutes; later runs reuse it."):
+                checker.run(US_SYMBOLS, n_bars=n_bars)
+            st.session_state["us_volume_scan"] = dict(checker.last_run)
+
+        scan = st.session_state.get("us_volume_scan")
+        if scan is None:
+            st.info("No results yet. Press Execute Volume Scan.")
+        else:
+            if (scan.get("longs") is None or scan["longs"].empty) and \
+               (scan.get("shorts") is None or scan["shorts"].empty):
                 st.warning("No levels matched current parameters.")
+            else:
+                st.success("Scan Complete!")
+            render_volume_scan(scan)
 
 # --- SCRIPT 3: India DIY COILED & BREAKOUT SCREENER ---
 elif selected_script == "India DIY Coiled & Breakout Screener":
