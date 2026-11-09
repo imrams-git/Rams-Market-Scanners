@@ -194,6 +194,9 @@ def render_volume_scan(scan):
     n_long = 0 if longs is None else len(longs)
     n_short = 0 if shorts is None else len(shorts)
 
+    for note in (scan.get("notes") or []):
+        st.warning(note)
+
     coverage = scan.get("coverage") or {}
     stats = [f"{n_long} long", f"{n_short} short"]
     if coverage:
@@ -201,6 +204,12 @@ def render_volume_scan(scan):
     if scan.get("requests") is not None:
         stats.append(f"{scan['requests']} requests")
     st.caption(" | ".join(stats))
+
+    exclusions = scan.get("exclusions") or {}
+    if n_long == 0 and n_short == 0 and exclusions:
+        top = ", ".join(f"{k} ({v})" for k, v in
+                        sorted(exclusions.items(), key=lambda kv: -kv[1])[:3])
+        st.warning(f"Nothing survived the quality gates. Main reasons: {top}")
 
     st.subheader("Long setups")
     if n_long:
@@ -237,7 +246,6 @@ def render_volume_scan(scan):
                            key="us_csv_dl")
         st.caption("Every row, including what was excluded and why.")
 
-    exclusions = scan.get("exclusions") or {}
     if exclusions:
         with st.expander("Rows removed by the quality gates"):
             for reason, n in sorted(exclusions.items(), key=lambda kv: -kv[1]):
