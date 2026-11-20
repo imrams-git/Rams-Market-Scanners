@@ -137,7 +137,20 @@ WHAT CHANGED FROM THE PREVIOUS VERSION
     applied when those columns actually carry data (>=50% coverage), MAX_PE=0
     disables the PE gate outright, and every degradation is reported as a
     warning in the terminal, the browser UI and the AI packet.
-"""
+
+17. MARKET CONTEXT HEADER.  Every run now opens with the trend of the relevant
+    indices, computed with the same 50DMA slope the scan uses: S&P 500, Russell 2000
+    and VIX. It prints in the terminal, leads the AI packet and
+    is exposed as last_run["market"]. Three extra requests per run, fetched with
+    retries=0 so a dead Yahoo cannot burn retries on a header.
+18. LIVE PROGRESS.  Every phase now reports "done/total" with elapsed time and an
+    ETA, so a 500-symbol scan is not a blank wait: "Intraday scan: 160/533 (30%)
+    1m12s elapsed, ~2m48s left". Terminal updates in place with a carriage
+    return when stdout is a tty, and prints every 10% when it is not (logs,
+    containers). In a browser the same text drives st.progress, with one bar for
+    the whole run so it never resets to zero between phases. Fundamentals are
+    counted from the worker threads but only printed to the terminal -- Streamlit
+    elements are not thread-safe."""
 
 import yfinance as yf
 import pandas as pd
@@ -146,6 +159,7 @@ from typing import List
 import warnings
 import os
 import time
+import sys
 import random
 import logging
 import tempfile
@@ -177,6 +191,10 @@ YF_INTERVALS = {"1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "4h",
 RESAMPLE_MAP = {}                    # requested -> fetched, then resampled
 RESAMPLE_RULE = {"30m": "30min", "1Hr": "1h", "4Hr": "4h", "1d": "1D"}
 EASTERN = pytz.timezone("US/Eastern")
+
+MARKET_INDICES = {"S&P 500": "^GSPC", "RUSSELL 2000": "^RUT",
+                  "VIX": "^VIX"}
+REGIME_INDEX = "S&P 500"
 
 
 def _market_open_now() -> bool:
@@ -381,6 +399,16 @@ class VolumeAlertChecker:
         self._funnel = Counter()
         self._rsi_cache = {}
         self._run_notes = []
+        self.market_context = []
+        self._st_bar = None
+        self._t0 = None
+        self._progress_open = False
+        self._last_pct = -1.0
+        self._last_label = None
+        self._phase_t0 = None
+        self._phase_i = 0
+        self._fund_done = 0
+        self._fund_total = 0
         self._hourly_frame = None
         self.last_run = {}
         # None = unknown, True = Yahoo serves 4h, False = derive it from 30m.
@@ -495,6 +523,77 @@ class VolumeAlertChecker:
                 return pd.DataFrame()
             return pd.concat(out, axis=1)
         return _one(df)
+
+    _PROGRESS_PHASES = ("Daily data", "Intraday scan", "Fundamentals")
+
+    @staticmethod
+    def _fmt_dur(sec: float) -> str:
+        sec = max(float(sec), 0.0)
+        return f"{sec:.0f}s" if sec < 60 else f"{sec // 60:.0f}m{sec % 60:02.0f}s"
+
+    def _progress(self, done, total, label, ui=True, done_all=False):
+        """Live 'x/y' progress: in-place in a terminal, st.progress in a browser."""
+        total = max(int(total), 1)
+        done = max(0, min(int(done), total))
+        pct = done / total
+        if label != self._last_label:
+            self._last_pct = -1.0
+            self._last_label = label
+            if label in self._PROGRESS_PHASES:
+                self._phase_i = self._PROGRESS_PHASES.index(label)
+        # one bar for the whole run, so it never jumps back to zero
+        overall = min((self._phase_i + pct) / len(self._PROGRESS_PHASES), 1.0)
+        if self._t0 is None:
+            self._t0 = time.time()
+        elapsed = time.time() - self._t0
+        phase_elapsed = time.time() - (self._phase_t0 or self._t0)
+        msg = f"{label}: {done}/{total} ({pct:.0%})  {self._fmt_dur(elapsed)} elapsed"
+        if 0.02 < pct < 1.0:
+            # ETA from this phase's own rate, not the whole run's
+            msg += f", ~{self._fmt_dur(phase_elapsed / pct - phase_elapsed)} left"
+
+        if ui and HAS_STREAMLIT and st.runtime.exists():
+            try:
+                if self._st_bar is None:
+                    self._st_bar = st.progress(0.0)
+                try:
+                    self._st_bar.progress(overall, text=msg)
+                except TypeError:                  # older streamlit: no text=
+                    self._st_bar.progress(overall)
+            except Exception:
+                self._st_bar = None
+
+        try:
+            if sys.stdout.isatty():
+                print("\r" + msg.ljust(78), end="", flush=True)
+                self._progress_open = True
+                if done_all:
+                    print()
+                    self._progress_open = False
+            else:
+                # not a terminal (log file, container, streamlit console):
+                # print on each 10% step rather than on every batch
+                if done_all or (pct < 1.0 and pct - self._last_pct >= 0.10):
+                    print("  " + msg, flush=True)
+                    self._last_pct = pct
+        except Exception:
+            pass
+        if done_all:
+            self._phase_t0 = time.time()
+
+    def _clear_progress(self):
+        if self._st_bar is not None:
+            try:
+                self._st_bar.empty()
+            except Exception:
+                pass
+            self._st_bar = None
+        try:
+            if self._progress_open:
+                print()
+                self._progress_open = False
+        except Exception:
+            pass
 
     @staticmethod
     def _pause(base: float = 0.35):
@@ -684,6 +783,61 @@ class VolumeAlertChecker:
         self._daily_cache[symbol] = ctx
         return ctx
 
+    def fetch_market_context(self) -> list:
+        """Headline index trend, computed exactly like the scan's 50DMA slope."""
+        if not MARKET_INDICES:
+            return []
+        try:
+            # retries=0: a cosmetic header must never burn retries when Yahoo is down
+            frame = self.get_batch_data(list(MARKET_INDICES.values()), "1d", "1y",
+                                         retries=0)
+        except Exception:
+            return []
+        if frame is None or getattr(frame, "empty", True):
+            return []
+        out = []
+        for name, ticker in MARKET_INDICES.items():
+            try:
+                if isinstance(frame.columns, pd.MultiIndex):
+                    if ticker not in frame.columns.levels[0]:
+                        continue
+                    sub = frame[ticker].dropna(how="all")
+                else:
+                    sub = frame
+                if sub is None or len(sub) < 55 or "Close" not in sub.columns:
+                    continue
+                close = sub["Close"].dropna()
+                sma = close.rolling(50).mean()
+                if len(close) < 55 or not np.isfinite(sma.iloc[-1]) or sma.iloc[-1] <= 0:
+                    continue
+                slope = (sma.iloc[-1] / sma.iloc[-21] - 1.0) * 100.0
+                out.append({
+                    "name": name,
+                    "close": float(close.iloc[-1]),
+                    "vs50": float((close.iloc[-1] / sma.iloc[-1] - 1.0) * 100.0),
+                    "slope": float(slope),
+                    "rsi": float(self.calculate_rsi(close, self.rsi_period).iloc[-1]),
+                    "trend": ("rising" if slope > 0.25 else
+                              "falling" if slope < -0.25 else "flat"),
+                })
+            except Exception:
+                continue
+        return out
+
+    def print_market_context(self):
+        if not self.market_context:
+            return
+        print("\nMarket context (1y daily, 50DMA slope over 20 sessions)")
+        for m in self.market_context:
+            print(f"  {m['name']:<14} {m['close']:>11,.2f}  "
+                  f"{m['vs50']:>+6.2f}% vs 50DMA   "
+                  f"slope {m['slope']:>+5.2f}%   RSI {m['rsi']:>4.1f}   {m['trend']}")
+        regime = next((m for m in self.market_context
+                       if m["name"] == REGIME_INDEX), None)
+        if regime:
+            print(f"  Regime: {REGIME_INDEX} 50DMA {regime['trend']} "
+                  f"({regime['slope']:+.2f}% over 20 sessions)")
+
     def _mtf_rsi(self, symbol, hourly_frame, daily_frame) -> dict:
         """RSI on the 1Hr, daily and weekly charts for one symbol.
 
@@ -872,6 +1026,12 @@ class VolumeAlertChecker:
 
     # ----------------------------------------------------------- fundamentals
     def _fundamentals_one(self, sym: str) -> dict:
+        try:
+            self._fund_done += 1
+            self._progress(self._fund_done, max(self._fund_total, 1),
+                           "Fundamentals", ui=False)
+        except Exception:
+            pass
         pe_str, days_to_earn, sector = "N/A", "N/A", "N/A"
         for attempt in range(2):
             try:
@@ -900,6 +1060,9 @@ class VolumeAlertChecker:
         if unique_symbols:
             print(f"\nFetching Fundamental Data for {len(unique_symbols)} matched symbols...")
             time.sleep(2.0)      # let a throttled IP cool before the quoteSummary burst
+            self._fund_total = len(unique_symbols)
+            self._fund_done = 0
+            self._progress(0, self._fund_total, "Fundamentals")
             with ThreadPoolExecutor(max_workers=self.fundamentals_workers) as pool:
                 results = list(pool.map(self._fundamentals_one, unique_symbols))
             fund_data = dict(zip(unique_symbols, results))
@@ -1021,6 +1184,9 @@ class VolumeAlertChecker:
         print(f"workers={self.max_workers} | request budget="
               f"{self.max_requests or 'unlimited'} | native 4h="
               f"{self._allow_native_4h} | cache={self.cache_dir}")
+        self.market_context = self.fetch_market_context()
+        self.print_market_context()
+
         print("Fetching Daily Data and filtering delisted tickers...")
         fixed_symbols = list(dict.fromkeys(sym.replace(".", "-") for sym in symbols))
         self._fail_streak = 0
@@ -1045,9 +1211,12 @@ class VolumeAlertChecker:
 
             daily_data_chunks.append(batch_df)
             have_daily |= self._symbols_with_data(batch_df, batch)
+            self._progress(len(have_daily), len(fixed_symbols), "Daily data")
             self._pause()
 
         valid_symbols = [s for s in fixed_symbols if s in have_daily]
+        self._progress(len(valid_symbols), len(fixed_symbols), "Daily data",
+                       done_all=True)
         missing_daily = [s for s in fixed_symbols if s not in have_daily]
 
         if not daily_data_chunks:
@@ -1068,6 +1237,7 @@ class VolumeAlertChecker:
         print(f"Scanning intraday ({base_tf} base -> {', '.join(intraday_tfs)})...")
         self._fail_streak = 0
 
+        intra_done = 0
         for i in range(0, len(valid_symbols), batch_size):
             batch = valid_symbols[i: i + batch_size]
             base = self.get_batch_data(batch, base_tf)
@@ -1123,7 +1293,12 @@ class VolumeAlertChecker:
                     for res in self.analyze_symbol(
                             data, full_daily_data, sym, n_bars, tf):
                         rows.append([res[0], tf] + res[1:])
+            intra_done += len(batch)
+            self._progress(intra_done, len(valid_symbols), "Intraday scan")
             self._pause()
+
+        self._progress(len(valid_symbols), max(len(valid_symbols), 1),
+                       "Intraday scan", done_all=True)
 
         # ---- Daily time frame reuses the 90d frame we already hold
         if "1d" in self.timeframes:
@@ -1169,6 +1344,7 @@ class VolumeAlertChecker:
             # Still write a packet and publish artefacts: "nothing matched" is a
             # result, and the browser UI needs to show that the scan completed.
             print("No stocks matched.")
+            self._clear_progress()
             output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
             os.makedirs(output_dir, exist_ok=True)
             timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -1198,6 +1374,7 @@ class VolumeAlertChecker:
         df = df.drop_duplicates()
         # Fundamentals must land before tiering (tiers use the earnings window)
         df = self.add_fundamentals(df)
+        self._clear_progress()
         df = self.assign_tiers(df)
 
         # Earnings proximity: downgrade instead of dropping, so the name stays visible
@@ -1241,6 +1418,7 @@ class VolumeAlertChecker:
                          for tf in self.timeframes},
             "requests": self._requests_made, "cache_hits": self._cache_hits,
             "funnel": dict(self._funnel), "notes": list(self._run_notes),
+            "market": self.market_context,
         }
         if packet:
             print(f"\nAI packet written: {packet}")
@@ -1313,6 +1491,16 @@ class VolumeAlertChecker:
 
         longs_t, note_l = _trim(longs)
         shorts_t, note_s = _trim(shorts)
+
+        if self.market_context:
+            A("## Market context")
+            A("")
+            A("| Index | Close | vs 50DMA | 50DMA slope (20d) | RSI(D) | Trend |")
+            A("|---|---|---|---|---|---|")
+            for m in self.market_context:
+                A(f"| {m['name']} | {m['close']:,.2f} | {m['vs50']:+.2f}% | "
+                  f"{m['slope']:+.2f}% | {m['rsi']:.1f} | {m['trend']} |")
+            A("")
 
         A("## LONG setups (ImbHigh - price above an unmitigated resistance level)")
         A("")
